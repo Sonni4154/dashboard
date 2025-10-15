@@ -140,7 +140,7 @@ export async function syncCalendarEvents(calendarId: string): Promise<number> {
         .insert(calendarEvents)
         .values({
           google_event_id: event.id,
-          google_calendar_id: calendarId,
+          calendar_id: calendarId,
           title: event.summary || 'Untitled Event',
           description: event.description || null,
           location: event.location || null,
@@ -156,7 +156,7 @@ export async function syncCalendarEvents(calendarId: string): Promise<number> {
           status: event.status || 'scheduled',
           cancelled: event.status === 'cancelled',
           last_synced: new Date(),
-        })
+        } as any)
         .onConflictDoUpdate({
           target: calendarEvents.google_event_id,
           set: {
@@ -176,7 +176,7 @@ export async function syncCalendarEvents(calendarId: string): Promise<number> {
             cancelled: event.status === 'cancelled',
             last_synced: new Date(),
             updated_at: new Date(),
-          },
+          } as any,
         });
 
       syncedCount++;

@@ -181,7 +181,7 @@ export class QuickBooksClient {
           token_type: token_type,
           scope: scope,
           last_updated: now,
-        })
+        } as any)
         .where(eq(tokens.id, currentToken.id));
 
       logger.info('QuickBooks token refreshed successfully');

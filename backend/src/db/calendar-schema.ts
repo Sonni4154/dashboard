@@ -79,7 +79,7 @@ export const employees = pgTable('employees', {
 export const calendarEvents = pgTable('calendar_events', {
   id: serial('id').primaryKey(),
   google_event_id: varchar('google_event_id', { length: 255 }).notNull().unique(),
-  google_calendar_id: varchar('google_calendar_id', { length: 255 }).notNull(),
+  calendar_id: varchar('calendar_id', { length: 255 }).notNull(),
   
   // Event details
   title: varchar('title', { length: 500 }).notNull(),

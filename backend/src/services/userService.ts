@@ -111,7 +111,7 @@ export class UserService {
       lastName: user.last_name
     };
 
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as string });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
   }
 
   /**

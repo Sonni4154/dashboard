@@ -9,6 +9,7 @@ declare global {
       user?: {
         id: string;
         email: string;
+        isAdmin?: boolean;
         role: string;
         [key: string]: any;
       };

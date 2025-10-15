@@ -120,6 +120,32 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       provider: user.app_metadata?.provider 
     });
 
+    // Check if user exists in our database and get their role
+    let userRole = 'authenticated'; // Default role
+    let isAdmin = false;
+    
+    try {
+      // Import the database and user schema
+      const { db, users } = await import('../db/index.js');
+      const { eq } = await import('drizzle-orm');
+      
+      // Check if user exists in our users table
+      const existingUser = await db.query.users.findFirst({
+        where: eq(users.google_id, user.id)
+      });
+      
+      if (existingUser) {
+        isAdmin = existingUser.is_admin;
+        userRole = isAdmin ? 'admin_role' : 'employee_role';
+        logger.info(`User role determined: ${userRole} (is_admin: ${isAdmin})`);
+      } else {
+        logger.warn(`User ${user.email} not found in local database, using default role: ${userRole}`);
+      }
+    } catch (error) {
+      logger.error('Error checking user role:', error);
+      // Continue with default role
+    }
+
     // Success page with user info
     res.send(`
       <html>
@@ -140,6 +166,7 @@ router.get('/google/callback', async (req: Request, res: Response) => {
             <p><strong>Name:</strong> ${user.user_metadata?.full_name || 'N/A'}</p>
             <p><strong>Provider:</strong> ${user.app_metadata?.provider || 'google'}</p>
             <p><strong>Email Verified:</strong> ${user.email_confirmed_at ? 'Yes' : 'No'}</p>
+            <p><strong>Role:</strong> ${userRole} ${isAdmin ? '(Admin)' : '(Employee)'}</p>
           </div>
           <div class="info">
             <p><strong>Access Token:</strong></p>

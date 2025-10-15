@@ -269,7 +269,7 @@ export class QuickBooksTokenManager {
           token_type: token_type,
           scope: scope,
           last_updated: now,
-        })
+        } as any)
         .where(eq(tokens.id, token.id));
 
         logger.info(`✅ QuickBooks token refreshed successfully. Expires at: ${newExpiresAt.toISOString()}`);
@@ -305,7 +305,7 @@ export class QuickBooksTokenManager {
           .set({
             is_active: false,
             last_updated: new Date()
-          })
+          } as any)
           .where(eq(tokens.id, tokenId));
         
         logger.warn(`⚠️ Token ${tokenId} marked as inactive`);

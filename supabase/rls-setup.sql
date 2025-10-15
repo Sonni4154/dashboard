@@ -71,7 +71,7 @@ GRANT USAGE ON SCHEMA google TO service_role, authenticated, admin_role, employe
 -- 3. PUBLIC SCHEMA POLICIES
 -- =============================================================================
 
--- Users table policies
+-- Users table policies (more restrictive)
 CREATE POLICY "Users can view own profile" ON "public"."users"
     FOR SELECT USING (auth.uid() = id);
 
@@ -81,8 +81,8 @@ CREATE POLICY "Users can update own profile" ON "public"."users"
 CREATE POLICY "Service role full access to users" ON "public"."users"
     FOR ALL USING (auth.role() = 'service_role');
 
-CREATE POLICY "Admin role can view all users" ON "public"."users"
-    FOR SELECT USING (auth.role() = 'admin_role');
+CREATE POLICY "Admin role can manage all users" ON "public"."users"
+    FOR ALL USING (auth.role() = 'admin_role');
 
 -- Auth sessions policies
 CREATE POLICY "Users can view own sessions" ON "public"."auth_sessions"

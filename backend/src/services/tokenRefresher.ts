@@ -101,7 +101,7 @@ export async function refreshQuickBooksTokens(): Promise<void> {
         expires_at: newExpiresAt,
         refresh_token_expires_at: newRefreshTokenExpiresAt,
         last_updated: now,
-      })
+      } as any)
       .where(eq(tokens.id, currentToken.id));
 
     logger.info(`✅ QuickBooks token refreshed successfully. Expires at: ${newExpiresAt.toISOString()}`);

@@ -63,7 +63,7 @@ export async function upsertItem(item: any, realmId: string) {
           metadata: itemData.metadata,
           last_synced: itemData.last_synced,
           last_updated: itemData.last_updated
-        }
+        } as any
       });
 
     logger.info(`✅ Successfully upserted item: ${item.Name || item.FullyQualifiedName}`);

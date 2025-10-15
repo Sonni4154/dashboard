@@ -40,7 +40,7 @@ router.get('/events', async (req: Request, res: Response) => {
     }
 
     if (calendar_id) {
-      query = query.where(eq(calendarEvents.google_calendar_id, calendar_id as string)) as any;
+      query = query.where(eq(calendarEvents.calendar_id, calendar_id as string)) as any;
     }
 
     const events = await query.orderBy(asc(calendarEvents.start_time));
@@ -134,11 +134,11 @@ router.post('/', async (req: Request, res: Response) => {
       .values({
         calendar_event_id: parseInt(calendar_event_id),
         employee_id: parseInt(employee_id),
-        assigned_by: parseInt(assigned_by as string),
+        assigned_by: assigned_by,
         sequence_order: sequence_order ? parseInt(sequence_order) : null,
         admin_notes,
         status: 'assigned',
-      })
+      } as any)
       .returning();
 
     // TODO: Append assignment info to Google Calendar event description
@@ -543,14 +543,14 @@ router.post('/notes', async (req: Request, res: Response) => {
       .insert(internalNotes)
       .values({
         entity_type: entity_type || 'general',
-        entity_id,
+        entity_id: entity_id,
         title,
         content,
         category: category || 'general',
         priority: priority || 'normal',
         visible_to_all: visible_to_all !== undefined ? visible_to_all : false,
         created_by: parseInt(created_by as string),
-      })
+      } as any)
       .returning();
 
     res.json({
@@ -696,7 +696,7 @@ router.post('/clock/in', async (req: Request, res: Response) => {
         clock_in_location: location,
         ip_address: req.ip || req.socket.remoteAddress || null,
         user_agent: req.headers['user-agent'] || null,
-      })
+      } as any)
       .returning();
 
     res.json({
@@ -761,7 +761,7 @@ router.post('/clock/out', async (req: Request, res: Response) => {
         duration_minutes: durationMinutes,
         notes,
         updated_at: new Date(),
-      })
+      } as any)
       .where(eq(timeEntries.id, activeEntry.id))
       .returning();
 
@@ -975,7 +975,7 @@ router.put('/clock/entries/:id/approve', async (req: Request, res: Response) => 
         approval_notes: notes || null,
         approved_at: approved === true ? new Date() : null,
         last_updated: new Date(),
-      })
+      } as any)
       .where(eq(timeEntries.id, parseInt(id)))
       .returning();
 
