@@ -673,7 +673,9 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL,
     "google_id" character varying(255),
-    "profile_picture" "text"
+    "profile_picture" "text",
+    "role" "text" DEFAULT 'employee_role'::"text",
+    CONSTRAINT "users_role_check" CHECK (("role" = ANY (ARRAY['admin_role'::"text", 'employee_role'::"text", 'authenticated'::"text"])))
 );
 
 

@@ -14,9 +14,8 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleGoogleLogin = () => {
-    // For now, simulate Google login with a working token
-    authUtils.setToken('google-oauth-token-123');
-    window.location.href = '/dashboard';
+    // Redirect to backend Google OAuth endpoint
+    window.location.href = '/api/auth/google';
   };
 
   const handleEmployeeLogin = async (e: React.FormEvent) => {

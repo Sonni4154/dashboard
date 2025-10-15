@@ -45,7 +45,10 @@ if (!connectionString) {
   throw new Error('❌ DATABASE_URL environment variable is required');
 }
 
-const sql = postgres(connectionString, {
+// URL-encode the password to handle special characters
+const encodedUrl = connectionString.replace(/TTrustno22##\$\$/g, encodeURIComponent('TTrustno22##$$'));
+
+const sql = postgres(encodedUrl, {
   ssl: { rejectUnauthorized: false },
   max: 20,
   idle_timeout: 20,

@@ -11,8 +11,8 @@ export default function LoginPage() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      // Redirect to NextAuth Google OAuth
-      window.location.href = '/api/auth/signin/google';
+      // Redirect to backend Google OAuth endpoint
+      window.location.href = '/api/auth/google';
     } catch (error) {
       console.error('Sign in error:', error);
       setIsLoading(false);

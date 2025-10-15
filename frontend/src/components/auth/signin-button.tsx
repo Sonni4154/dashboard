@@ -13,8 +13,8 @@ export function SignInButton({
   className 
 }: SignInButtonProps) {
   const handleSignIn = () => {
-    // Redirect to NextAuth signin
-    window.location.href = `/api/auth/signin/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    // Redirect to backend OAuth endpoint
+    window.location.href = `/api/auth/${provider}?callbackUrl=${encodeURIComponent(callbackUrl)}`;
   };
 
   return (
