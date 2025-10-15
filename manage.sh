@@ -1222,7 +1222,7 @@ configure_nginx() {
     sudo nginx -t
     
     # Reload nginx
-    sudo systemctl reload nginx
+            sudo systemctl reload nginx
 }
 
 setup_ssl() {
@@ -1289,8 +1289,8 @@ hardware_monitoring() {
             "7" "⏰ Real-time Monitoring" \
             "0" "⬅️  Back to Main Menu" \
             3>&1 1>&2 2>&3)
-        
-        case $choice in
+    
+    case $choice in
             1) system_overview ;;
             2) cpu_memory_usage ;;
             3) disk_usage ;;
@@ -1298,7 +1298,7 @@ hardware_monitoring() {
             5) process_list ;;
             6) export_system_report ;;
             7) realtime_monitoring ;;
-            0) return ;;
+        0) return ;;
         esac
     done
 }
@@ -1490,8 +1490,8 @@ process_management() {
             "7" "🧽 System Cleanup" \
             "0" "⬅️  Back to Main Menu" \
             3>&1 1>&2 2>&3)
-        
-        case $choice in
+    
+    case $choice in
             1) clean_old_processes ;;
             2) restart_all_services ;;
             3) stop_all_services ;;
@@ -1499,7 +1499,7 @@ process_management() {
             5) view_pm2_status ;;
             6) clean_logs ;;
             7) system_cleanup ;;
-            0) return ;;
+        0) return ;;
         esac
     done
 }
@@ -1613,15 +1613,15 @@ domain_configuration() {
             "6" "🔄 Update DNS Records" \
             "0" "⬅️  Back to Main Menu" \
             3>&1 1>&2 2>&3)
-        
-        case $choice in
+    
+    case $choice in
             1) configure_domain ;;
             2) generate_cloudflare_dns ;;
             3) ssl_certificate_status ;;
             4) dns_propagation_check ;;
             5) domain_health_check ;;
             6) update_dns_records ;;
-            0) return ;;
+        0) return ;;
         esac
     done
 }
@@ -2073,7 +2073,7 @@ live_process_monitor() {
         ss -tuln | head -10
         echo ""
         echo "Press Ctrl+C to exit..."
-        sleep 3
+    sleep 3
     done
 }
 
@@ -2254,8 +2254,8 @@ view_logs() {
             "7" "📊 Log Statistics" \
             "0" "⬅️  Back to Main Menu" \
             3>&1 1>&2 2>&3)
-        
-        case $choice in
+    
+    case $choice in
             1) view_application_logs ;;
             2) view_pm2_logs ;;
             3) view_nginx_logs ;;
@@ -2263,7 +2263,7 @@ view_logs() {
             5) view_log_directory ;;
             6) clean_logs ;;
             7) log_statistics ;;
-            0) return ;;
+        0) return ;;
         esac
     done
 }

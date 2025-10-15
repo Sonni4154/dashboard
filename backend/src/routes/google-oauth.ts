@@ -1,82 +1,79 @@
 import { Router, Request, Response } from 'express';
-import axios from 'axios';
-import { db, users } from '../db/index.js';
-import { eq, and, or } from 'drizzle-orm';
+import { createClient } from '@supabase/supabase-js';
 import { logger } from '../utils/logger.js';
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
 
 const router = Router();
 
-// Google OAuth configuration
-const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const GOOGLE_USER_INFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
+// Supabase client configuration
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  logger.error('Supabase configuration missing. Please set SUPABASE_URL and SUPABASE_ANON_KEY');
+}
+
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 /**
  * GET /api/auth/google
- * Redirect to Google OAuth authorization
+ * Initiate Google OAuth flow through Supabase
  */
 router.get('/google', (req: Request, res: Response) => {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || `http://${req.get('host')}/api/auth/google/callback`;
-  const scope = 'openid email profile';
-  const state = crypto.randomBytes(32).toString('hex');
-
-  if (!clientId) {
+  if (!supabase) {
     return res.status(500).json({
       success: false,
-      error: 'Google Client ID not configured',
+      error: 'Supabase not configured'
     });
   }
 
-  const authUrl = `${GOOGLE_AUTH_URL}?` + new URLSearchParams({
-    client_id: clientId,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: scope,
-    state: state,
-    access_type: 'offline',
-    prompt: 'consent',
-  }).toString();
+  try {
+    const { data, error } = supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${req.protocol}://${req.get('host')}/api/auth/google/callback`
+      }
+    });
 
-  logger.info('Redirecting to Google OAuth:', { redirectUri, state });
-  
-  // Store state in session or cookie for verification
-  res.cookie('oauth_state', state, { httpOnly: true, secure: process.env.NODE_ENV === 'production' });
-  
-  res.redirect(authUrl);
+    if (error) {
+      logger.error('Google OAuth initiation error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to initiate Google OAuth'
+      });
+    }
+
+    // Redirect to Google OAuth
+    res.redirect(data.url);
+  } catch (error: any) {
+    logger.error('Google OAuth error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Google OAuth failed'
+    });
+  }
 });
 
 /**
  * GET /api/auth/google/callback
- * Handle OAuth callback from Google
+ * Handle Google OAuth callback from Supabase
  */
 router.get('/google/callback', async (req: Request, res: Response) => {
+  if (!supabase) {
+    return res.status(500).send(`
+      <html>
+        <body>
+          <h1>❌ Supabase Configuration Error</h1>
+          <p>Supabase is not properly configured</p>
+        </body>
+      </html>
+    `);
+  }
+
   try {
-    const { code, state, error } = req.query;
-    const storedState = req.cookies.oauth_state;
+    const { code, error } = req.query;
 
-    // Verify state parameter
-    if (!state || state !== storedState) {
-      logger.error('Invalid OAuth state parameter');
-      return res.status(400).send(`
-        <html>
-          <body>
-            <h1>❌ Invalid OAuth State</h1>
-            <p>Security verification failed</p>
-            <a href="/">Go back to dashboard</a>
-          </body>
-        </html>
-      `);
-    }
-
-    // Clear the state cookie
-    res.clearCookie('oauth_state');
-
-    // Check for OAuth errors
     if (error) {
-      logger.error('Google OAuth error:', error);
+      logger.error('Google OAuth callback error:', error);
       return res.status(400).send(`
         <html>
           <body>
@@ -99,135 +96,220 @@ router.get('/google/callback', async (req: Request, res: Response) => {
       `);
     }
 
-    // Exchange authorization code for tokens
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `http://${req.get('host')}/api/auth/google/callback`;
+    // Exchange code for session
+    const { data, error: sessionError } = await supabase.auth.exchangeCodeForSession(code as string);
 
-    if (!clientId || !clientSecret) {
-      throw new Error('Google OAuth credentials not configured');
+    if (sessionError || !data.session) {
+      logger.error('Failed to exchange code for session:', sessionError);
+      return res.status(400).send(`
+        <html>
+          <body>
+            <h1>❌ Failed to complete authorization</h1>
+            <p>Error: ${sessionError?.message || 'Unknown error'}</p>
+            <a href="/api/auth/google">Try again</a>
+          </body>
+        </html>
+      `);
     }
 
-    const tokenResponse = await axios.post(
-      GOOGLE_TOKEN_URL,
-      new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code: code as string,
-        grant_type: 'authorization_code',
-        redirect_uri: redirectUri,
-      }).toString(),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      }
-    );
+    const { user, session } = data;
 
-    const { access_token, refresh_token, expires_in } = tokenResponse.data;
-
-    // Get user info from Google
-    const userInfoResponse = await axios.get(GOOGLE_USER_INFO_URL, {
-      headers: {
-        'Authorization': `Bearer ${access_token}`,
-      },
+    logger.info('Google OAuth successful:', { 
+      userId: user.id, 
+      email: user.email,
+      provider: user.app_metadata?.provider 
     });
 
-    const { id: googleId, email, name, picture } = userInfoResponse.data;
-
-    // Check if user exists in database
-    let user = await db.query.users.findFirst({
-      where: or(
-        eq(users.email, email),
-        eq(users.google_id, googleId)
-      )
-    });
-
-    if (!user) {
-      // Create new user
-      const [newUser] = await db.insert(users).values({
-        google_id: googleId,
-        email: email,
-        username: email.split('@')[0], // Use email prefix as username
-        first_name: name.split(' ')[0] || '',
-        last_name: name.split(' ').slice(1).join(' ') || '',
-        profile_picture: picture,
-        role: 'user', // Default role
-        is_active: true,
-        last_login: new Date(),
-        created_at: new Date(),
-        updated_at: new Date(),
-      }).returning();
-
-      user = newUser;
-      logger.info(`New user created via Google OAuth: ${email}`);
-    } else {
-      // Update existing user
-      await db.update(users)
-        .set({
-          google_id: googleId,
-          profile_picture: picture,
-          last_login: new Date(),
-          updated_at: new Date(),
-        })
-        .where(eq(users.id, user.id));
-    }
-
-    // Generate JWT token
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('JWT_SECRET not configured');
-    }
-
-    const token = jwt.sign(
-      { 
-        id: user.id, 
-        email: user.email, 
-        role: user.role 
-      },
-      jwtSecret,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
-    );
-
-    // Generate session token
-    const sessionToken = crypto.randomBytes(32).toString('hex');
-
-    // Return success page with token
+    // Success page with user info
     res.send(`
       <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+            h1 { color: #28a745; }
+            .info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .btn { display: inline-block; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; }
+            .token { background: #e9ecef; padding: 10px; border-radius: 3px; font-family: monospace; word-break: break-all; }
+          </style>
+        </head>
         <body>
-          <h1>✅ Google Login Successful</h1>
-          <p>Welcome, ${user.first_name}!</p>
-          <script>
-            // Store token in localStorage and redirect
-            localStorage.setItem('auth_token', '${token}');
-            localStorage.setItem('session_token', '${sessionToken}');
-            localStorage.setItem('user_info', '${JSON.stringify({
-              id: user.id,
-              email: user.email,
-              firstName: user.first_name,
-              lastName: user.last_name,
-              role: user.role,
-              profilePicture: user.profile_picture
-            })}');
-            window.location.href = '/dashboard';
-          </script>
+          <h1>✅ Google Authentication Successful!</h1>
+          <div class="info">
+            <p><strong>User ID:</strong> ${user.id}</p>
+            <p><strong>Email:</strong> ${user.email}</p>
+            <p><strong>Name:</strong> ${user.user_metadata?.full_name || 'N/A'}</p>
+            <p><strong>Provider:</strong> ${user.app_metadata?.provider || 'google'}</p>
+            <p><strong>Email Verified:</strong> ${user.email_confirmed_at ? 'Yes' : 'No'}</p>
+          </div>
+          <div class="info">
+            <p><strong>Access Token:</strong></p>
+            <div class="token">${session.access_token}</div>
+          </div>
+          <p>You can now use this token to authenticate with the API!</p>
+          <a href="/" class="btn">Go to Dashboard</a>
         </body>
       </html>
     `);
-
-    logger.info(`User logged in via Google OAuth: ${user.email}`);
   } catch (error: any) {
     logger.error('Google OAuth callback error:', error);
     res.status(500).send(`
       <html>
         <body>
-          <h1>❌ Authentication Error</h1>
-          <p>An error occurred during authentication: ${error.message}</p>
-          <a href="/">Go back to dashboard</a>
+          <h1>❌ Failed to complete authorization</h1>
+          <p>Error: ${error.message}</p>
+          <a href="/api/auth/google">Try again</a>
         </body>
       </html>
     `);
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Get current user information
+ */
+router.get('/me', async (req: Request, res: Response) => {
+  if (!supabase) {
+    return res.status(500).json({
+      success: false,
+      error: 'Supabase not configured'
+    });
+  }
+
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid authorization header'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or expired token'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.user_metadata?.full_name,
+          avatar: user.user_metadata?.avatar_url,
+          provider: user.app_metadata?.provider,
+          emailVerified: !!user.email_confirmed_at,
+          createdAt: user.created_at,
+          lastSignIn: user.last_sign_in_at
+        }
+      }
+    });
+  } catch (error: any) {
+    logger.error('Get user error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get user information'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Logout user and invalidate session
+ */
+router.post('/logout', async (req: Request, res: Response) => {
+  if (!supabase) {
+    return res.status(500).json({
+      success: false,
+      error: 'Supabase not configured'
+    });
+  }
+
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid authorization header'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
+
+    if (error) {
+      logger.error('Logout error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to logout'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Successfully logged out'
+    });
+  } catch (error: any) {
+    logger.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Logout failed'
+    });
+  }
+});
+
+/**
+ * GET /api/auth/refresh
+ * Refresh access token
+ */
+router.get('/refresh', async (req: Request, res: Response) => {
+  if (!supabase) {
+    return res.status(500).json({
+      success: false,
+      error: 'Supabase not configured'
+    });
+  }
+
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        error: 'No valid authorization header'
+      });
+    }
+
+    const token = authHeader.substring(7);
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token: token });
+
+    if (error || !data.session) {
+      return res.status(401).json({
+        success: false,
+        error: 'Failed to refresh session'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        expires_in: data.session.expires_in,
+        expires_at: data.session.expires_at
+      }
+    });
+  } catch (error: any) {
+    logger.error('Token refresh error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Token refresh failed'
+    });
   }
 });
 

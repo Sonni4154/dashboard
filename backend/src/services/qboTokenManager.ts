@@ -1,8 +1,9 @@
 import cron from 'node-cron';
 import axios from 'axios';
-import { db, tokens } from '../db/index.js';
+import { db, tokens, setServiceRoleContext } from '../db/index.js';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from '../utils/logger.js';
+import { RLSService } from './rlsService.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -74,53 +75,56 @@ export class QuickBooksTokenManager {
     try {
       logger.info('🔍 Checking QuickBooks token status...');
 
-      const [currentToken] = await db
-        .select()
-        .from(tokens)
-        .where(eq(tokens.is_active, true))
-        .orderBy(desc(tokens.last_updated))
-        .limit(1);
+      // Use service role context for token management
+      return await RLSService.withServiceRole(async () => {
+        const [currentToken] = await db
+          .select()
+          .from(tokens)
+          .where(eq(tokens.is_active, true))
+          .orderBy(desc(tokens.last_updated))
+          .limit(1);
 
-      if (!currentToken) {
-        logger.warn('⚠️ No active QuickBooks token found');
-        return false;
-      }
-
-      if (!currentToken.refresh_token) {
-        logger.error('❌ No refresh token available - reauthorization required');
-        return false;
-      }
-
-      // Check if access token is expired or expires soon
-      const now = new Date();
-      const expiresAt = currentToken.expires_at ? new Date(currentToken.expires_at) : null;
-
-      // Check if refresh token is expired (95 days)
-      const refreshExpiresAt = currentToken.refresh_token_expires_at 
-        ? new Date(currentToken.refresh_token_expires_at) 
-        : null;
-      
-      if (refreshExpiresAt && now >= refreshExpiresAt) {
-        logger.error('❌ Refresh token expired - reauthorization required');
-        await this.markTokenInactive(currentToken.id);
-        return false;
-      }
-
-      // Check if access token needs refresh (expires within 10 minutes)
-      if (expiresAt) {
-        const timeUntilExpiry = expiresAt.getTime() - now.getTime();
-        const tenMinutes = 10 * 60 * 1000;
-
-        if (timeUntilExpiry <= tenMinutes) {
-          logger.info('🔄 Access token expires soon, refreshing...');
-          return await this.refreshAccessToken(currentToken);
-        } else {
-          logger.info(`✅ Access token valid for ${Math.round(timeUntilExpiry / 60000)} minutes`);
-          return true;
+        if (!currentToken) {
+          logger.warn('⚠️ No active QuickBooks token found');
+          return false;
         }
-      }
 
-      return true;
+        if (!currentToken.refresh_token) {
+          logger.error('❌ No refresh token available - reauthorization required');
+          return false;
+        }
+
+        // Check if access token is expired or expires soon
+        const now = new Date();
+        const expiresAt = currentToken.expires_at ? new Date(currentToken.expires_at) : null;
+
+        // Check if refresh token is expired (95 days)
+        const refreshExpiresAt = currentToken.refresh_token_expires_at 
+          ? new Date(currentToken.refresh_token_expires_at) 
+          : null;
+        
+        if (refreshExpiresAt && now >= refreshExpiresAt) {
+          logger.error('❌ Refresh token expired - reauthorization required');
+          await this.markTokenInactive(currentToken.id);
+          return false;
+        }
+
+        // Check if access token needs refresh (expires within 10 minutes)
+        if (expiresAt) {
+          const timeUntilExpiry = expiresAt.getTime() - now.getTime();
+          const tenMinutes = 10 * 60 * 1000;
+
+          if (timeUntilExpiry <= tenMinutes) {
+            logger.info('🔄 Access token expires soon, refreshing...');
+            return await this.refreshAccessToken(currentToken);
+          } else {
+            logger.info(`✅ Access token valid for ${Math.round(timeUntilExpiry / 60000)} minutes`);
+            return true;
+          }
+        }
+
+        return true;
+      });
 
     } catch (error) {
       logger.error('❌ Error checking token status:', error);
@@ -135,49 +139,51 @@ export class QuickBooksTokenManager {
     try {
       logger.info('🔄 Refreshing QuickBooks access token...');
 
-      const clientId = process.env.QBO_CLIENT_ID;
-      const clientSecret = process.env.QBO_CLIENT_SECRET;
+      // Use service role context for token refresh
+      return await RLSService.withServiceRole(async () => {
+        const clientId = process.env.QBO_CLIENT_ID;
+        const clientSecret = process.env.QBO_CLIENT_SECRET;
 
-      if (!clientId || !clientSecret) {
-        throw new Error('QuickBooks client credentials not configured');
-      }
-
-      const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
-      const response = await axios.post(
-        'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
-        new URLSearchParams({
-          grant_type: 'refresh_token',
-          refresh_token: token.refresh_token,
-        }),
-        {
-          headers: {
-            'Authorization': `Basic ${authHeader}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          timeout: 30000,
+        if (!clientId || !clientSecret) {
+          throw new Error('QuickBooks client credentials not configured');
         }
-      );
 
-      const { 
-        access_token, 
-        refresh_token, 
-        expires_in,
-        x_refresh_token_expires_in,
-        token_type,
-        scope 
-      } = response.data;
-      
-      const expiresIn = Number(expires_in ?? 3600);
-      const refreshExpiresIn = Number(x_refresh_token_expires_in ?? 60 * 60 * 24 * 100);
-      
-      const now = new Date();
-      const newExpiresAt = new Date(now.getTime() + expiresIn * 1000);
-      const newRefreshTokenExpiresAt = new Date(now.getTime() + refreshExpiresIn * 1000);
+        const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-      // Update the token in the database
-      await db
+        const response = await axios.post(
+          'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
+          new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: token.refresh_token,
+          }),
+          {
+            headers: {
+              'Authorization': `Basic ${authHeader}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            timeout: 30000,
+          }
+        );
+
+        const { 
+          access_token, 
+          refresh_token, 
+          expires_in,
+          x_refresh_token_expires_in,
+          token_type,
+          scope 
+        } = response.data;
+        
+        const expiresIn = Number(expires_in ?? 3600);
+        const refreshExpiresIn = Number(x_refresh_token_expires_in ?? 60 * 60 * 24 * 100);
+        
+        const now = new Date();
+        const newExpiresAt = new Date(now.getTime() + expiresIn * 1000);
+        const newRefreshTokenExpiresAt = new Date(now.getTime() + refreshExpiresIn * 1000);
+
+        // Update the token in the database
+        await db
         .update(tokens)
         .set({
           access_token: access_token,
@@ -190,8 +196,9 @@ export class QuickBooksTokenManager {
         })
         .where(eq(tokens.id, token.id));
 
-      logger.info(`✅ QuickBooks token refreshed successfully. Expires at: ${newExpiresAt.toISOString()}`);
-      return true;
+        logger.info(`✅ QuickBooks token refreshed successfully. Expires at: ${newExpiresAt.toISOString()}`);
+        return true;
+      });
 
     } catch (error) {
       logger.error('❌ Failed to refresh QuickBooks token:', error);
@@ -216,15 +223,17 @@ export class QuickBooksTokenManager {
    */
   private async markTokenInactive(tokenId: bigint): Promise<void> {
     try {
-      await db
-        .update(tokens)
-        .set({
-          is_active: false,
-          last_updated: new Date()
-        })
-        .where(eq(tokens.id, tokenId));
-      
-      logger.warn(`⚠️ Token ${tokenId} marked as inactive`);
+      await RLSService.withServiceRole(async () => {
+        await db
+          .update(tokens)
+          .set({
+            is_active: false,
+            last_updated: new Date()
+          })
+          .where(eq(tokens.id, tokenId));
+        
+        logger.warn(`⚠️ Token ${tokenId} marked as inactive`);
+      });
     } catch (error) {
       logger.error('❌ Failed to mark token inactive:', error);
     }

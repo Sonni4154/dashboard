@@ -50,6 +50,13 @@ CREATE SCHEMA IF NOT EXISTS "neon_auth";
 ALTER SCHEMA "neon_auth" OWNER TO "postgres";
 
 
+CREATE EXTENSION IF NOT EXISTS "pg_net" WITH SCHEMA "extensions";
+
+
+
+
+
+
 COMMENT ON SCHEMA "public" IS 'standard public schema';
 
 
@@ -549,7 +556,9 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
     "employee_notes" "text",
     "last_login" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL
+    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "google_id" character varying(255),
+    "profile_picture" "text"
 );
 
 
@@ -876,7 +885,7 @@ CREATE TABLE IF NOT EXISTS "quickbooks"."tokens" (
     "access_token" "text" NOT NULL,
     "refresh_token" "text" NOT NULL,
     "token_type" "text",
-    "scope" "text",
+    "scope" "text" DEFAULT ''::"text",
     "expires_at" timestamp with time zone,
     "refresh_token_expires_at" timestamp with time zone,
     "environment" "text",
@@ -1122,6 +1131,11 @@ ALTER TABLE ONLY "public"."users"
 
 
 ALTER TABLE ONLY "public"."users"
+    ADD CONSTRAINT "users_google_id_key" UNIQUE ("google_id");
+
+
+
+ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
 
 
@@ -1269,6 +1283,10 @@ CREATE INDEX "idx_time_clock_user_date" ON "public"."time_clock_entries" USING "
 
 
 CREATE INDEX "idx_user_permissions_user" ON "public"."user_permissions" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_users_google_id" ON "public"."users" USING "btree" ("google_id");
 
 
 
@@ -1635,7 +1653,53 @@ ALTER TABLE ONLY "quickbooks"."webhook_events"
 
 
 
+CREATE POLICY "Users can update own profile" ON "public"."users" FOR UPDATE USING ((("auth"."uid"())::"text" = ("id")::"text"));
+
+
+
+CREATE POLICY "Users can view own profile" ON "public"."users" FOR SELECT USING ((("auth"."uid"())::"text" = ("id")::"text"));
+
+
+
 ALTER TABLE "public"."kv_store_d9b518ae" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."customers" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."estimates" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."invoices" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."items" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Service role full access" ON "quickbooks"."customers" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access" ON "quickbooks"."estimates" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access" ON "quickbooks"."invoices" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access" ON "quickbooks"."items" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+ALTER TABLE "quickbooks"."companies" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."tokens" ENABLE ROW LEVEL SECURITY;
 
 
 
@@ -1644,6 +1708,9 @@ ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
 
 
 ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "quickbooks"."tokens";
+
+
+
 
 
 
