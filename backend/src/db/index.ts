@@ -1,5 +1,5 @@
-// Re-export everything from db.ts
-export * from './db.js';
+// Re-export everything from Supabase-optimized database module
+export * from './supabase-db.js';
 
 // Re-export calendar schema
 export * from './calendar-schema.js';

@@ -3,7 +3,7 @@ import axios from 'axios';
 import { db, tokens, setServiceRoleContext } from '../db/index.js';
 import { eq, desc } from 'drizzle-orm';
 import { logger } from '../utils/logger.js';
-import { RLSService } from './rlsService.js';
+// RLS now handled natively by Supabase
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -73,7 +73,7 @@ export class QuickBooksTokenManager {
    */
   public async getValidToken(): Promise<any> {
     try {
-      return await RLSService.withServiceRole(async () => {
+        return await (async () => {
         const [currentToken] = await db
           .select()
           .from(tokens)
@@ -103,7 +103,7 @@ export class QuickBooksTokenManager {
         }
         
         return currentToken;
-      });
+        })();
     } catch (error) {
       logger.error('❌ Error getting valid token:', error);
       return null;
@@ -115,7 +115,7 @@ export class QuickBooksTokenManager {
    */
   public async getTokenInfo(): Promise<any> {
     try {
-      return await RLSService.withServiceRole(async () => {
+        return await (async () => {
         const [currentToken] = await db
           .select()
           .from(tokens)
@@ -137,7 +137,7 @@ export class QuickBooksTokenManager {
           last_updated: currentToken.last_updated,
           token_type: currentToken.token_type
         };
-      });
+        })();
     } catch (error) {
       logger.error('❌ Error getting token info:', error);
       return { status: 'error', message: error.message };
@@ -151,8 +151,7 @@ export class QuickBooksTokenManager {
     try {
       logger.info('🔍 Checking QuickBooks token status...');
 
-      // Use service role context for token management
-      return await RLSService.withServiceRole(async () => {
+        // Use Supabase service role (automatically bypasses RLS)
         const [currentToken] = await db
           .select()
           .from(tokens)
@@ -200,8 +199,6 @@ export class QuickBooksTokenManager {
         }
 
         return true;
-      });
-
     } catch (error) {
       logger.error('❌ Error checking token status:', error);
       return false;
@@ -215,8 +212,8 @@ export class QuickBooksTokenManager {
     try {
       logger.info('🔄 Refreshing QuickBooks access token...');
 
-      // Use service role context for token refresh
-      return await RLSService.withServiceRole(async () => {
+        // Use Supabase service role (automatically bypasses RLS)
+        return await (async () => {
         const clientId = process.env.QBO_CLIENT_ID;
         const clientSecret = process.env.QBO_CLIENT_SECRET;
 
@@ -274,8 +271,7 @@ export class QuickBooksTokenManager {
 
         logger.info(`✅ QuickBooks token refreshed successfully. Expires at: ${newExpiresAt.toISOString()}`);
         return true;
-      });
-
+        })();
     } catch (error) {
       logger.error('❌ Failed to refresh QuickBooks token:', error);
       
@@ -299,7 +295,7 @@ export class QuickBooksTokenManager {
    */
   private async markTokenInactive(tokenId: bigint): Promise<void> {
     try {
-      await RLSService.withServiceRole(async () => {
+        await (async () => {
         await db
           .update(tokens)
           .set({
@@ -309,7 +305,7 @@ export class QuickBooksTokenManager {
           .where(eq(tokens.id, tokenId));
         
         logger.warn(`⚠️ Token ${tokenId} marked as inactive`);
-      });
+        })();
     } catch (error) {
       logger.error('❌ Failed to mark token inactive:', error);
     }

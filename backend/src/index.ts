@@ -9,7 +9,7 @@ import { verifyAuth, devAuth } from './middleware/auth.js';
 import { verifyCustomAuth, devCustomAuth } from './middleware/customAuth.js';
 import { responseEnvelope, errorHandler } from './middleware/responseEnvelope.js';
 import { devAdminAuth } from './middleware/adminAuth.js';
-import { setRLSContext } from './middleware/rlsContext.js';
+// RLS context now handled natively by Supabase
 import { qboTokenManager } from './services/qboTokenManager.js';
 
 // Import routes
@@ -81,8 +81,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Response envelope middleware
 app.use(responseEnvelope);
 
-// RLS context middleware - must be before routes
-// app.use(setRLSContext); // Temporarily disabled for server startup
+// RLS context now handled natively by Supabase auth
 
 // Request logging middleware
 app.use((req, res, next) => {

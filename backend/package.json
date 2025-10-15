@@ -28,6 +28,7 @@
     "test:all-endpoints": "npm run test:health && npm run test:api-health && npm run test:webhook-health && npm run test:sync-status",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "generate-types": "tsx scripts/generate-types.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:check": "drizzle-kit check",
