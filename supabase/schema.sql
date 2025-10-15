@@ -136,6 +136,62 @@ CREATE TYPE "google"."assignment_status" AS ENUM (
 ALTER TYPE "google"."assignment_status" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."notify_customer_update"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  PERFORM pg_notify('customer_update', json_build_object(
+    'id', NEW.id,
+    'realm_id', NEW.realm_id,
+    'display_name', NEW.display_name,
+    'last_updated', NEW.last_updated
+  )::text);
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."notify_customer_update"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."notify_invoice_update"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  PERFORM pg_notify('invoice_update', json_build_object(
+    'id', NEW.id,
+    'realm_id', NEW.realm_id,
+    'doc_number', NEW.doc_number,
+    'total_amt', NEW.total_amt,
+    'status', NEW.status,
+    'last_updated', NEW.last_updated
+  )::text);
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."notify_invoice_update"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."notify_token_update"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  PERFORM pg_notify('token_update', json_build_object(
+    'id', NEW.id,
+    'realm_id', NEW.realm_id,
+    'is_active', NEW.is_active,
+    'last_updated', NEW.last_updated
+  )::text);
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."notify_token_update"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."set_admin_context"("user_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -176,8 +232,8 @@ CREATE OR REPLACE FUNCTION "public"."trigger_set_last_updated"() RETURNS "trigge
     LANGUAGE "plpgsql"
     AS $$
 BEGIN
-  NEW.last_updated = NOW();
-  RETURN NEW;
+    NEW.last_updated = NOW();
+    RETURN NEW;
 END;
 $$;
 
@@ -368,7 +424,9 @@ CREATE TABLE IF NOT EXISTS "google"."calendar_events" (
     "qbo_customer_id" "text",
     "last_synced" timestamp with time zone,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL
+    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "assigned_by" "uuid",
+    "entity_id" "text"
 );
 
 
@@ -404,6 +462,24 @@ CREATE TABLE IF NOT EXISTS "google"."employee_availability" (
 
 
 ALTER TABLE "google"."employee_availability" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "google"."internal_notes" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "entity_type" "text" NOT NULL,
+    "entity_id" "text" NOT NULL,
+    "category" "text",
+    "title" "text",
+    "content" "text" NOT NULL,
+    "created_by" "uuid" NOT NULL,
+    "visible_to_all" boolean DEFAULT false,
+    "pinned" boolean DEFAULT false,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL
+);
+
+
+ALTER TABLE "google"."internal_notes" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "google"."work_assignments" (
@@ -546,7 +622,8 @@ CREATE TABLE IF NOT EXISTS "public"."time_clock_entries" (
     "approved_by_admin" boolean DEFAULT false NOT NULL,
     "approved_by_payroll" boolean DEFAULT false NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL
+    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "approved" boolean DEFAULT false
 );
 
 
@@ -560,7 +637,9 @@ CREATE TABLE IF NOT EXISTS "public"."user_permissions" (
     "granted_by" "uuid",
     "granted_at" timestamp with time zone DEFAULT "now"() NOT NULL,
     "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
-    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL
+    "last_updated" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "expires_at" timestamp with time zone,
+    "is_active" boolean DEFAULT true NOT NULL
 );
 
 
@@ -1076,6 +1155,11 @@ ALTER TABLE ONLY "google"."employee_availability"
 
 
 
+ALTER TABLE ONLY "google"."internal_notes"
+    ADD CONSTRAINT "internal_notes_pkey" PRIMARY KEY ("id");
+
+
+
 ALTER TABLE ONLY "google"."work_assignments"
     ADD CONSTRAINT "uq_event_employee" UNIQUE ("calendar_event_id", "employee_id");
 
@@ -1282,6 +1366,14 @@ CREATE INDEX "idx_assignments_employee" ON "google"."work_assignments" USING "bt
 
 
 
+CREATE INDEX "idx_calendar_events_assigned_by" ON "google"."calendar_events" USING "btree" ("assigned_by");
+
+
+
+CREATE INDEX "idx_calendar_events_entity_id" ON "google"."calendar_events" USING "btree" ("entity_id");
+
+
+
 CREATE INDEX "idx_employee_availability_range" ON "google"."employee_availability" USING "btree" ("employee_id", "start_time", "end_time");
 
 
@@ -1298,6 +1390,22 @@ CREATE INDEX "idx_google_events_time" ON "google"."calendar_events" USING "btree
 
 
 
+CREATE INDEX "idx_internal_notes_category" ON "google"."internal_notes" USING "btree" ("category");
+
+
+
+CREATE INDEX "idx_internal_notes_created_by" ON "google"."internal_notes" USING "btree" ("created_by");
+
+
+
+CREATE INDEX "idx_internal_notes_entity" ON "google"."internal_notes" USING "btree" ("entity_type", "entity_id");
+
+
+
+CREATE INDEX "idx_internal_notes_pinned" ON "google"."internal_notes" USING "btree" ("pinned");
+
+
+
 CREATE INDEX "idx_work_assignments_employee" ON "google"."work_assignments" USING "btree" ("employee_id");
 
 
@@ -1311,6 +1419,18 @@ CREATE INDEX "idx_auth_sessions_user" ON "public"."auth_sessions" USING "btree" 
 
 
 CREATE INDEX "idx_auth_sessions_user_id" ON "public"."auth_sessions" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_time_clock_entries_approved" ON "public"."time_clock_entries" USING "btree" ("approved");
+
+
+
+CREATE INDEX "idx_time_clock_entries_clock_in" ON "public"."time_clock_entries" USING "btree" ("clock_in");
+
+
+
+CREATE INDEX "idx_time_clock_entries_clock_out" ON "public"."time_clock_entries" USING "btree" ("clock_out");
 
 
 
@@ -1339,6 +1459,10 @@ CREATE INDEX "idx_users_auth_uid" ON "public"."users" USING "btree" ("id") WHERE
 
 
 CREATE INDEX "idx_users_google_id" ON "public"."users" USING "btree" ("google_id");
+
+
+
+CREATE INDEX "idx_users_last_login" ON "public"."users" USING "btree" ("last_login");
 
 
 
@@ -1470,6 +1594,10 @@ CREATE OR REPLACE TRIGGER "trg_google_work_assignments_last_updated" BEFORE UPDA
 
 
 
+CREATE OR REPLACE TRIGGER "trg_internal_notes_last_updated" BEFORE UPDATE ON "google"."internal_notes" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_last_updated"();
+
+
+
 CREATE OR REPLACE TRIGGER "trg_auth_providers_last_updated" BEFORE UPDATE ON "public"."auth_providers" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_last_updated"();
 
 
@@ -1491,6 +1619,18 @@ CREATE OR REPLACE TRIGGER "trg_user_permissions_last_updated" BEFORE UPDATE ON "
 
 
 CREATE OR REPLACE TRIGGER "trg_users_last_updated" BEFORE UPDATE ON "public"."users" FOR EACH ROW EXECUTE FUNCTION "public"."trigger_set_last_updated"();
+
+
+
+CREATE OR REPLACE TRIGGER "customer_update_trigger" AFTER INSERT OR UPDATE ON "quickbooks"."customers" FOR EACH ROW EXECUTE FUNCTION "public"."notify_customer_update"();
+
+
+
+CREATE OR REPLACE TRIGGER "invoice_update_trigger" AFTER INSERT OR UPDATE ON "quickbooks"."invoices" FOR EACH ROW EXECUTE FUNCTION "public"."notify_invoice_update"();
+
+
+
+CREATE OR REPLACE TRIGGER "token_update_trigger" AFTER UPDATE ON "quickbooks"."tokens" FOR EACH ROW EXECUTE FUNCTION "public"."notify_token_update"();
 
 
 
@@ -1561,6 +1701,11 @@ ALTER TABLE ONLY "dashboard"."time_clock_entries"
 
 
 ALTER TABLE ONLY "google"."calendar_events"
+    ADD CONSTRAINT "calendar_events_assigned_by_fkey" FOREIGN KEY ("assigned_by") REFERENCES "public"."users"("id");
+
+
+
+ALTER TABLE ONLY "google"."calendar_events"
     ADD CONSTRAINT "calendar_events_calendar_id_fkey" FOREIGN KEY ("calendar_id") REFERENCES "google"."calendars"("id") ON DELETE CASCADE;
 
 
@@ -1577,6 +1722,11 @@ ALTER TABLE ONLY "google"."calendars"
 
 ALTER TABLE ONLY "google"."employee_availability"
     ADD CONSTRAINT "employee_availability_employee_id_fkey" FOREIGN KEY ("employee_id") REFERENCES "dashboard"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "google"."internal_notes"
+    ADD CONSTRAINT "internal_notes_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "public"."users"("id");
 
 
 
@@ -2359,6 +2509,24 @@ GRANT ALL ON FUNCTION "public"."citext_smaller"("public"."citext", "public"."cit
 GRANT ALL ON FUNCTION "public"."citext_smaller"("public"."citext", "public"."citext") TO "anon";
 GRANT ALL ON FUNCTION "public"."citext_smaller"("public"."citext", "public"."citext") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."citext_smaller"("public"."citext", "public"."citext") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."notify_customer_update"() TO "anon";
+GRANT ALL ON FUNCTION "public"."notify_customer_update"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."notify_customer_update"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."notify_invoice_update"() TO "anon";
+GRANT ALL ON FUNCTION "public"."notify_invoice_update"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."notify_invoice_update"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."notify_token_update"() TO "anon";
+GRANT ALL ON FUNCTION "public"."notify_token_update"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."notify_token_update"() TO "service_role";
 
 
 

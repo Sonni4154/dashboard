@@ -123,8 +123,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
       email,
       password,
       firstName,
-      lastName,
-      role: role || 'user'
+      lastName
     });
 
     // Remove password hash from response

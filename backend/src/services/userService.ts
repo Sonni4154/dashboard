@@ -129,15 +129,15 @@ export class UserService {
   /**
    * Create user session
    */
-  static async createSession(userId: number, sessionToken: string): Promise<void> {
+  static async createSession(userId: string, sessionToken: string): Promise<void> {
     try {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + parseInt(SESSION_EXPIRES_IN.replace('d', '')));
 
       await db.insert(authSessions).values({
-        userId,
-        sessionToken,
-        expiresAt
+        user_id: userId,
+        session_token: sessionToken,
+        expires_at: expiresAt
       });
 
       logger.info(`Session created for user ${userId}`);
@@ -162,14 +162,14 @@ export class UserService {
         }
       });
 
-      if (!session || !session.user || !session.user.isActive) {
+      if (!session || !session.user || !session.user.is_active) {
         return null;
       }
 
       // Update last accessed time
       await db.update(authSessions)
-        .set({ lastAccessed: new Date() })
-        .where(eq(userSessions.id, session.id));
+        .set({ last_updated: new Date() })
+        .where(eq(authSessions.id, session.id));
 
       return session.user;
     } catch (error) {
@@ -183,8 +183,8 @@ export class UserService {
    */
   static async deleteSession(sessionToken: string): Promise<void> {
     try {
-      await db.delete(userSessions)
-        .where(eq(userSessions.sessionToken, sessionToken));
+      await db.delete(authSessions)
+        .where(eq(authSessions.session_token, sessionToken));
       
       logger.info(`Session deleted: ${sessionToken}`);
     } catch (error) {

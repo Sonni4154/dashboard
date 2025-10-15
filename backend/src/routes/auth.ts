@@ -21,7 +21,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Authenticate user
-    const user = await UserServiceSimple.authenticateUser(identifier, password);
+    const user = await UserService.authenticateUser(identifier, password);
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -30,7 +30,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Generate JWT token
-    const token = UserServiceSimple.generateToken(user);
+    const token = UserService.generateToken(user);
 
     // Generate session token for additional security
     const sessionToken = crypto.randomBytes(32).toString('hex');
@@ -41,11 +41,11 @@ router.post('/login', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'user',
+      isActive: user.is_active,
+      lastLogin: user.last_login
     };
 
     res.json({
@@ -58,7 +58,7 @@ router.post('/login', async (req: Request, res: Response) => {
       }
     });
 
-    logger.info(`User logged in: ${user.username} (${user.email})`);
+    logger.info(`User logged in: ${user.username || user.email}`);
   } catch (error) {
     logger.error('Login error:', error);
     res.status(500).json({
@@ -99,7 +99,7 @@ router.post('/logout', async (req: Request, res: Response) => {
  */
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { username, email, password, firstName, lastName, role } = req.body;
+    const { username, email, password, firstName, lastName } = req.body;
 
     // Check if registration is enabled (admin only by default)
     const registrationEnabled = process.env.REGISTRATION_ENABLED === 'true';
@@ -111,7 +111,7 @@ router.post('/register', async (req: Request, res: Response) => {
     }
 
     // Validate required fields
-    if (!username || !email || !password || !firstName || !lastName) {
+    if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({
         success: false,
         error: 'All fields are required'
@@ -126,18 +126,17 @@ router.post('/register', async (req: Request, res: Response) => {
       });
     }
 
-    // Create user (default role is 'user')
+    // Create user
     const user = await UserService.createUser({
       username,
       email,
       password,
       firstName,
-      lastName,
-      role: role || 'user'
+      lastName
     });
 
     // Generate JWT token
-    const token = UserServiceSimple.generateToken(user);
+    const token = UserService.generateToken(user);
 
     // Generate session token
     const sessionToken = crypto.randomBytes(32).toString('hex');
@@ -148,11 +147,11 @@ router.post('/register', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'user',
+      isActive: user.is_active,
+      lastLogin: user.last_login
     };
 
     res.status(201).json({
@@ -165,7 +164,7 @@ router.post('/register', async (req: Request, res: Response) => {
       }
     });
 
-    logger.info(`User registered: ${user.username} (${user.email})`);
+    logger.info(`User registered: ${user.username || user.email}`);
   } catch (error) {
     logger.error('Registration error:', error);
     res.status(500).json({
@@ -221,11 +220,11 @@ router.get('/me', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'user',
+      isActive: user.is_active,
+      lastLogin: user.last_login
     };
 
     res.json({
@@ -266,7 +265,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
     }
 
     // Generate new JWT token
-    const token = UserServiceSimple.generateToken(user);
+    const token = UserService.generateToken(user);
 
     res.json({
       success: true,
@@ -345,7 +344,7 @@ router.post('/change-password', async (req: Request, res: Response) => {
       message: 'Password changed successfully'
     });
 
-    logger.info(`Password changed for user: ${decoded.username}`);
+    logger.info(`Password changed for user: ${decoded.email}`);
   } catch (error) {
     logger.error('Change password error:', error);
     res.status(500).json({

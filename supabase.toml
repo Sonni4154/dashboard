@@ -1,0 +1,42 @@
+# supabase.toml (ready-to-deploy)
+[functions.qbo-webhook]
+verify_jwt = false
+
+[functions.qbo-cdc-hourly]
+verify_jwt = false
+
+[functions.qbo-cdc-hourly.schedule]
+cron = "0 * * * *"
+
+[functions.qbo-manual-sync]
+verify_jwt = true
+
+[functions.customers-search]
+verify_jwt = true
+
+[functions.invoices-search]
+verify_jwt = true
+
+[functions.health-basic]
+verify_jwt = false
+
+[functions.health-db]
+verify_jwt = false
+
+[functions.sync-status]
+verify_jwt = true
+
+[functions.google-assignments]
+verify_jwt = true
+
+[functions.google-assignments-id]
+verify_jwt = true
+
+[functions.time-clock-status]
+verify_jwt = true
+
+[functions.notes]
+verify_jwt = true
+
+[functions.notes-id]
+verify_jwt = true

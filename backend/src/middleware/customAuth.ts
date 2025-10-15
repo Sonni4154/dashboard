@@ -7,12 +7,9 @@ declare global {
   namespace Express {
     interface Request {
       user?: {
-        id: number;
-        username: string;
+        id: string;
         email: string;
         role: string;
-        firstName: string;
-        lastName: string;
         [key: string]: any;
       };
     }
@@ -45,7 +42,7 @@ export const verifyCustomAuth = async (req: Request, res: Response, next: NextFu
     }
 
     // Verify the JWT token
-    const decoded = UserServiceSimple.verifyToken(token);
+    const decoded = UserService.verifyToken(token);
     if (!decoded) {
       res.status(401).json({ 
         error: 'Unauthorized', 
@@ -57,11 +54,8 @@ export const verifyCustomAuth = async (req: Request, res: Response, next: NextFu
     // Add user info to request
     req.user = {
       id: decoded.id,
-      username: decoded.username,
       email: decoded.email,
-      role: decoded.role,
-      firstName: decoded.firstName,
-      lastName: decoded.lastName
+      role: decoded.role
     };
 
     next();
@@ -159,8 +153,8 @@ export const requirePermission = (permission: string) => {
         return;
       }
 
-      // For now, skip permission checks in simple version
-      const hasPermission = true;
+      // Check user permissions
+      const hasPermission = await UserService.hasPermission(req.user.id, permission);
       if (!hasPermission) {
         res.status(403).json({ 
           error: 'Forbidden', 
@@ -200,7 +194,7 @@ export const optionalCustomAuth = async (req: Request, res: Response, next: Next
     }
 
     // Verify the JWT token
-    const decoded = UserServiceSimple.verifyToken(token);
+    const decoded = UserService.verifyToken(token);
     if (!decoded) {
       next();
       return;
@@ -209,11 +203,8 @@ export const optionalCustomAuth = async (req: Request, res: Response, next: Next
     // Add user info to request
     req.user = {
       id: decoded.id,
-      username: decoded.username,
       email: decoded.email,
-      role: decoded.role,
-      firstName: decoded.firstName,
-      lastName: decoded.lastName
+      role: decoded.role
     };
 
     next();
@@ -230,12 +221,9 @@ export const devCustomAuth = (req: Request, res: Response, next: NextFunction): 
   if (process.env.NODE_ENV === 'development' || process.env.SKIP_AUTH === 'true') {
     // Mock user for development
     req.user = {
-      id: 1,
-      username: 'admin',
+      id: '00000000-0000-0000-0000-000000000001',
       email: 'admin@wemakemarin.com',
-      role: 'admin',
-      firstName: 'Admin',
-      lastName: 'User'
+      role: 'admin'
     };
     next();
     return;

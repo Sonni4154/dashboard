@@ -1,0 +1,1280 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Marin Pest Control Dashboard API",
+    "version": "2.0.0",
+    "description": "Comprehensive business management system integrating QuickBooks Online, Google Calendar, Supabase authentication, and custom scheduling features for Marin Pest Control",
+    "contact": {
+      "name": "Marin Pest Control",
+      "email": "support@wemakemarin.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://wemakemarin.com",
+      "description": "Production server"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "supabaseAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Basic health check",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "System is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "ok": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "timestamp": { "type": "string" },
+                    "version": { "type": "string" },
+                    "environment": { "type": "string" },
+                    "database": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "API health check with database connectivity",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "API and database are healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/basic": {
+      "get": {
+        "summary": "Basic health check (v1)",
+        "tags": ["Health", "v1"],
+        "responses": {
+          "200": {
+            "description": "System is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health/db": {
+      "get": {
+        "summary": "Database health check (v1)",
+        "tags": ["Health", "v1"],
+        "responses": {
+          "200": {
+            "description": "Database is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google": {
+      "get": {
+        "summary": "Initiate Google OAuth flow",
+        "tags": ["Authentication", "Google OAuth"],
+        "responses": {
+          "302": {
+            "description": "Redirect to Google OAuth"
+          },
+          "500": {
+            "description": "OAuth initiation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/google/callback": {
+      "get": {
+        "summary": "Handle Google OAuth callback",
+        "tags": ["Authentication", "Google OAuth"],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Authorization code from Google",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "description": "Error description if OAuth failed",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to dashboard on success"
+          },
+          "400": {
+            "description": "OAuth callback failed",
+            "content": {
+              "text/html": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Get current authenticated user information",
+        "tags": ["Authentication"],
+        "security": [{"supabaseAuth": []}],
+        "responses": {
+          "200": {
+            "description": "User information retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout current user",
+        "tags": ["Authentication"],
+        "security": [{"supabaseAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Logged out successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "get": {
+        "summary": "Refresh user session",
+        "tags": ["Authentication"],
+        "security": [{"supabaseAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Session refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "session": { "type": "object" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/qbo/connect": {
+      "get": {
+        "summary": "Initiate QuickBooks OAuth connection",
+        "tags": ["QuickBooks", "OAuth"],
+        "responses": {
+          "302": {
+            "description": "Redirect to QuickBooks OAuth"
+          }
+        }
+      }
+    },
+    "/api/qbo/callback": {
+      "get": {
+        "summary": "Handle QuickBooks OAuth callback",
+        "tags": ["QuickBooks", "OAuth"],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Authorization code from QuickBooks",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "realmId",
+            "in": "query",
+            "description": "QuickBooks company realm ID",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "QuickBooks connection successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/qbo/disconnect": {
+      "get": {
+        "summary": "Disconnect QuickBooks integration",
+        "tags": ["QuickBooks", "OAuth"],
+        "responses": {
+          "200": {
+            "description": "QuickBooks disconnected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customers": {
+      "get": {
+        "summary": "Get all customers",
+        "tags": ["QuickBooks", "Customers"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number",
+            "schema": { "type": "integer", "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Items per page",
+            "schema": { "type": "integer", "default": 50 }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customers retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Customer" }
+                    },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customers/stats": {
+      "get": {
+        "summary": "Get customer statistics",
+        "tags": ["QuickBooks", "Customers"],
+        "responses": {
+          "200": {
+            "description": "Customer statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total": { "type": "integer" },
+                        "active": { "type": "integer" },
+                        "inactive": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/customers/{id}": {
+      "get": {
+        "summary": "Get customer by ID",
+        "tags": ["QuickBooks", "Customers"],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Customer ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Customer retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/Customer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/items": {
+      "get": {
+        "summary": "Get all items",
+        "tags": ["QuickBooks", "Items"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number",
+            "schema": { "type": "integer", "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Items per page",
+            "schema": { "type": "integer", "default": 50 }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Items retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Item" }
+                    },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/items/stats": {
+      "get": {
+        "summary": "Get item statistics",
+        "tags": ["QuickBooks", "Items"],
+        "responses": {
+          "200": {
+            "description": "Item statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices": {
+      "get": {
+        "summary": "Get all invoices",
+        "tags": ["QuickBooks", "Invoices"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number",
+            "schema": { "type": "integer", "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Items per page",
+            "schema": { "type": "integer", "default": 50 }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invoices retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Invoice" }
+                    },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices/stats": {
+      "get": {
+        "summary": "Get invoice statistics",
+        "tags": ["QuickBooks", "Invoices"],
+        "responses": {
+          "200": {
+            "description": "Invoice statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total": { "type": "integer" },
+                        "paid": { "type": "integer" },
+                        "unpaid": { "type": "integer" },
+                        "totalRevenue": { "type": "number" },
+                        "outstandingBalance": { "type": "number" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/estimates": {
+      "get": {
+        "summary": "Get all estimates",
+        "tags": ["QuickBooks", "Estimates"],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Page number",
+            "schema": { "type": "integer", "default": 1 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Items per page",
+            "schema": { "type": "integer", "default": 50 }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search term",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estimates retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Estimate" }
+                    },
+                    "pagination": { "$ref": "#/components/schemas/Pagination" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/estimates/stats": {
+      "get": {
+        "summary": "Get estimate statistics",
+        "tags": ["QuickBooks", "Estimates"],
+        "responses": {
+          "200": {
+            "description": "Estimate statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/events": {
+      "get": {
+        "summary": "Get calendar events",
+        "tags": ["Calendar", "Google"],
+        "parameters": [
+          {
+            "name": "start_date",
+            "in": "query",
+            "description": "Start date (YYYY-MM-DD)",
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "description": "End date (YYYY-MM-DD)",
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "calendar_id",
+            "in": "query",
+            "description": "Calendar ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calendar events retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/CalendarEvent" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/events/today": {
+      "get": {
+        "summary": "Get today's calendar events",
+        "tags": ["Calendar", "Google"],
+        "parameters": [
+          {
+            "name": "include_assigned",
+            "in": "query",
+            "description": "Include assigned work",
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Today's events retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/CalendarEvent" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/work-queue": {
+      "get": {
+        "summary": "Get work queue for today",
+        "tags": ["Calendar", "Work"],
+        "responses": {
+          "200": {
+            "description": "Work queue retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/WorkAssignment" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/employees": {
+      "get": {
+        "summary": "Get all employees",
+        "tags": ["Calendar", "Employees"],
+        "parameters": [
+          {
+            "name": "active_only",
+            "in": "query",
+            "description": "Only active employees",
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Employees retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/Employee" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/clock/in": {
+      "post": {
+        "summary": "Clock in employee",
+        "tags": ["Time Clock"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "employee_id": { "type": "string" },
+                  "location": { "type": "string" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clocked in successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/clock/out": {
+      "post": {
+        "summary": "Clock out employee",
+        "tags": ["Time Clock"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "employee_id": { "type": "string" },
+                  "location": { "type": "string" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clocked out successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/clock/status": {
+      "get": {
+        "summary": "Get clock status for employee",
+        "tags": ["Time Clock"],
+        "parameters": [
+          {
+            "name": "employee_id",
+            "in": "query",
+            "description": "Employee ID",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clock status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "isClockedIn": { "type": "boolean" },
+                        "clockInTime": { "type": "string", "format": "date-time" },
+                        "currentDuration": { "type": "number" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhook/quickbooks": {
+      "post": {
+        "summary": "QuickBooks webhook endpoint",
+        "tags": ["Webhooks", "QuickBooks"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "eventNotifications": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "dataChangeEvent": {
+                          "type": "object",
+                          "properties": {
+                            "entities": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "name": { "type": "string" },
+                                  "id": { "type": "string" },
+                                  "operation": { "type": "string" }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/webhook/health": {
+      "get": {
+        "summary": "Webhook health check",
+        "tags": ["Webhooks", "Health"],
+        "responses": {
+          "200": {
+            "description": "Webhook system is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync": {
+      "post": {
+        "summary": "Trigger data synchronization",
+        "tags": ["Sync"],
+        "responses": {
+          "200": {
+            "description": "Sync initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync/status": {
+      "get": {
+        "summary": "Get sync status",
+        "tags": ["Sync"],
+        "responses": {
+          "200": {
+            "description": "Sync status retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "lastSync": { "type": "string", "format": "date-time" },
+                        "status": { "type": "string" },
+                        "progress": { "type": "number" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/tenants": {
+      "get": {
+        "summary": "Get tenant information (Admin)",
+        "tags": ["Admin", "v1"],
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Tenant information retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "realmId": { "type": "string" },
+                          "companyName": { "type": "string" },
+                          "lastSync": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/token-audit": {
+      "get": {
+        "summary": "Get token audit information (Admin)",
+        "tags": ["Admin", "v1"],
+        "security": [{"bearerAuth": []}],
+        "responses": {
+          "200": {
+            "description": "Token audit information retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "realmId": { "type": "string" },
+                          "isActive": { "type": "boolean" },
+                          "lastUpdated": { "type": "string", "format": "date-time" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "supabaseAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Supabase JWT token"
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "ok": { "type": "boolean" },
+          "message": { "type": "string" },
+          "timestamp": { "type": "string" },
+          "version": { "type": "string" },
+          "environment": { "type": "string" },
+          "database": { "type": "string" }
+        }
+      },
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean" },
+          "message": { "type": "string" },
+          "data": { "type": "object" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "default": false },
+          "message": { "type": "string" },
+          "error": { "type": "string" }
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "total": { "type": "integer" },
+          "pages": { "type": "integer" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "isAdmin": { "type": "boolean" },
+          "isActive": { "type": "boolean" },
+          "lastLogin": { "type": "string", "format": "date-time" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "realmId": { "type": "string" },
+          "name": { "type": "string" },
+          "email": { "type": "string" },
+          "phone": { "type": "string" },
+          "active": { "type": "boolean" },
+          "balance": { "type": "number" },
+          "lastSynced": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "realmId": { "type": "string" },
+          "name": { "type": "string" },
+          "sku": { "type": "string" },
+          "description": { "type": "string" },
+          "type": { "type": "string" },
+          "active": { "type": "boolean" },
+          "unitPrice": { "type": "number" },
+          "salesPrice": { "type": "number" },
+          "qtyOnHand": { "type": "number" },
+          "lastSynced": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "realmId": { "type": "string" },
+          "customerId": { "type": "string" },
+          "customerName": { "type": "string" },
+          "docNumber": { "type": "string" },
+          "totalAmt": { "type": "number" },
+          "balance": { "type": "number" },
+          "dueDate": { "type": "string", "format": "date" },
+          "status": { "type": "string" },
+          "lastSynced": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Estimate": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "realmId": { "type": "string" },
+          "customerId": { "type": "string" },
+          "customerName": { "type": "string" },
+          "docNumber": { "type": "string" },
+          "totalAmt": { "type": "number" },
+          "status": { "type": "string" },
+          "lastSynced": { "type": "string", "format": "date-time" }
+        }
+      },
+      "CalendarEvent": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "googleEventId": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "location": { "type": "string" },
+          "startTime": { "type": "string", "format": "date-time" },
+          "endTime": { "type": "string", "format": "date-time" },
+          "allDay": { "type": "boolean" },
+          "status": { "type": "string" }
+        }
+      },
+      "WorkAssignment": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "calendarEventId": { "type": "integer" },
+          "employeeId": { "type": "string" },
+          "assignedBy": { "type": "string" },
+          "sequenceOrder": { "type": "integer" },
+          "adminNotes": { "type": "string" },
+          "status": { "type": "string" }
+        }
+      },
+      "Employee": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "firstName": { "type": "string" },
+          "lastName": { "type": "string" },
+          "email": { "type": "string" },
+          "isActive": { "type": "boolean" },
+          "onLeave": { "type": "boolean" },
+          "payRate": { "type": "number" }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check endpoints"
+    },
+    {
+      "name": "Authentication",
+      "description": "User authentication and session management"
+    },
+    {
+      "name": "Google OAuth",
+      "description": "Google OAuth integration"
+    },
+    {
+      "name": "QuickBooks",
+      "description": "QuickBooks Online integration"
+    },
+    {
+      "name": "OAuth",
+      "description": "OAuth flow management"
+    },
+    {
+      "name": "Customers",
+      "description": "Customer management"
+    },
+    {
+      "name": "Items",
+      "description": "Product/Service item management"
+    },
+    {
+      "name": "Invoices",
+      "description": "Invoice management"
+    },
+    {
+      "name": "Estimates",
+      "description": "Estimate management"
+    },
+    {
+      "name": "Calendar",
+      "description": "Google Calendar integration"
+    },
+    {
+      "name": "Google",
+      "description": "Google services integration"
+    },
+    {
+      "name": "Work",
+      "description": "Work assignment management"
+    },
+    {
+      "name": "Employees",
+      "description": "Employee management"
+    },
+    {
+      "name": "Time Clock",
+      "description": "Time tracking and clock management"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Webhook endpoints"
+    },
+    {
+      "name": "Sync",
+      "description": "Data synchronization"
+    },
+    {
+      "name": "Admin",
+      "description": "Administrative functions"
+    },
+    {
+      "name": "v1",
+      "description": "Version 1 API endpoints"
+    }
+  ]
+}

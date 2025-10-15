@@ -3,7 +3,7 @@
 # =============================================================================
 # 🚀 MARIN PEST CONTROL DASHBOARD - MASTER MANAGEMENT SCRIPT
 # =============================================================================
-# A comprehensive deployment and management tool with whiptail interface
+# A comprehensive deployment and management tool with simple text interface
 # Features: Deployment, Monitoring, Debugging, Domain Management, Process Control
 # =============================================================================
 
@@ -35,15 +35,17 @@ log() {
 # Error handling
 error_exit() {
     log "ERROR: $1"
-    whiptail --title "Error" --msgbox "Error: $1" 10 60
+    echo -e "${RED}ERROR: $1${NC}"
     exit 1
 }
 
 # Check if running as root for certain operations
 check_root() {
     if [[ $EUID -eq 0 ]]; then
-        whiptail --title "Root Warning" --yesno "This script is running as root. Some operations may require elevated privileges. Continue?" 10 60
-        if [[ $? -ne 0 ]]; then
+        echo -e "${YELLOW}WARNING: This script is running as root. Some operations may require elevated privileges.${NC}"
+        read -p "Continue? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
         fi
     fi
@@ -55,21 +57,28 @@ check_root() {
 
 show_main_menu() {
     while true; do
-        choice=$(whiptail --title "🚀 Marin Pest Control Dashboard - Master Control" \
-            --menu "Choose an option:" 20 80 10 \
-            "1" "🚀 Complete Deployment (Full Stack + SSL)" \
-            "2" "📊 Hardware Monitoring & System Info" \
-            "3" "🧹 Process Management & Cleanup" \
-            "4" "🌐 Domain Configuration & DNS" \
-            "5" "✅ Check Deployment State" \
-            "6" "🔍 Lint/Check/Debug Tools" \
-            "7" "🐛 Active Debug & Diagnostics" \
-            "8" "📋 View Logs & Reports" \
-            "9" "🧪 API Endpoint Testing" \
-            "10" "🔒 SSH Hardening & Security" \
-            "11" "⚙️  System Configuration" \
-            "0" "❌ Exit" \
-            3>&1 1>&2 2>&3)
+        clear
+        echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║                    🚀 MARIN PEST CONTROL DASHBOARD                        ║${NC}"
+        echo -e "${CYAN}║                           Master Management Script                         ║${NC}"
+        echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+        echo
+        echo -e "${WHITE}Choose an option:${NC}"
+        echo
+        echo -e "${GREEN}1.${NC} 🚀 Complete Deployment (Full Stack + SSL)"
+        echo -e "${GREEN}2.${NC} 📊 Hardware Monitoring & System Info"
+        echo -e "${GREEN}3.${NC} 🧹 Process Management & Cleanup"
+        echo -e "${GREEN}4.${NC} 🌐 Domain Configuration & DNS"
+        echo -e "${GREEN}5.${NC} ✅ Check Deployment State"
+        echo -e "${GREEN}6.${NC} 🔍 Lint/Check/Debug Tools"
+        echo -e "${GREEN}7.${NC} 🐛 Active Debug & Diagnostics"
+        echo -e "${GREEN}8.${NC} 📋 View Logs & Reports"
+        echo -e "${GREEN}9.${NC} 🧪 API Endpoint Testing"
+        echo -e "${GREEN}10.${NC} 🔒 SSH Hardening & Security"
+        echo -e "${GREEN}11.${NC} ⚙️  System Configuration"
+        echo -e "${GREEN}0.${NC} ❌ Exit"
+        echo
+        read -p "Enter your choice (0-11): " choice
         
         case $choice in
             1) deployment_menu ;;
@@ -83,7 +92,8 @@ show_main_menu() {
             9) endpoint_testing ;;
             10) ssh_hardening ;;
             11) system_configuration ;;
-            0) exit 0 ;;
+            0) echo -e "${GREEN}Goodbye!${NC}"; exit 0 ;;
+            *) echo -e "${RED}Invalid option. Please try again.${NC}"; sleep 2 ;;
         esac
     done
 }

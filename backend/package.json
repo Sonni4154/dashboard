@@ -42,7 +42,6 @@
     "deploy:full": "npm run deploy:check && npm run pm2:restart"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^0.10.3",
     "@supabase/supabase-js": "^2.75.0",
     "@types/pg": "^8.15.5",
     "axios": "^1.12.2",
@@ -87,7 +86,7 @@
     "marin",
     "pest-control",
     "drizzle",
-    "neon",
+    "supabase",
     "express"
   ],
   "author": "Spencer Reiser — Marin Pest Control",
