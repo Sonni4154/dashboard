@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { UserServiceSimple } from '../services/userServiceSimple.js';
+import { UserService } from '../services/userService.js';
 import { logger } from '../utils/logger.js';
 
 // Extend Request interface to include user

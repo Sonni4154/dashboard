@@ -83,9 +83,10 @@ async function processWebhookEvent(event: any): Promise<void> {
     }
 
     const entities = event.dataChangeEvent.entities;
+    const realmId = event.dataChangeEvent.realmId || event.realmId;
     
     for (const entity of entities) {
-      await processEntityChange(entity);
+      await processEntityChange(entity, realmId);
     }
   } catch (error) {
     logger.error('Error processing webhook event:', error);
@@ -96,7 +97,7 @@ async function processWebhookEvent(event: any): Promise<void> {
 /**
  * Process individual entity change
  */
-async function processEntityChange(entity: any): Promise<void> {
+async function processEntityChange(entity: any, realmId: string): Promise<void> {
   try {
     const entityName = entity.name;
     const entityId = entity.id;
@@ -110,17 +111,17 @@ async function processEntityChange(entity: any): Promise<void> {
         break;
 
       case 'Invoice':
-        await upsertInvoice(entity);
+        await upsertInvoice(entity, realmId);
         logger.info(`✅ Invoice ${entityId} updated`);
         break;
 
       case 'Estimate':
-        await upsertEstimate(entity);
+        await upsertEstimate(entity, realmId);
         logger.info(`✅ Estimate ${entityId} updated`);
         break;
 
       case 'Item':
-        await upsertItem(entity);
+        await upsertItem(entity, realmId);
         logger.info(`✅ Item ${entityId} updated`);
         break;
 

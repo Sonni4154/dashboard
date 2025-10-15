@@ -86,54 +86,7 @@ export const timeClockEntries = pgTable('time_clock_entries', {
   clockOutIdx: index('idx_time_clock_clock_out').on(table.clock_out)
 }));
 
-// User permissions table
-export const userPermissions = pgTable('user_permissions', {
-  id: uuid('id').primaryKey().defaultRandom().notNull(),
-  user_id: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  permission: text('permission').notNull(),
-  granted_by: uuid('granted_by').references(() => users.id),
-  granted_at: timestamp('granted_at', { withTimezone: true }).defaultNow().notNull(),
-  expires_at: timestamp('expires_at', { withTimezone: true }),
-  is_active: boolean('is_active').default(true).notNull(),
-  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  last_updated: timestamp('last_updated', { withTimezone: true }).defaultNow().notNull()
-}, (table) => ({
-  userIdx: index('idx_user_permissions_user_id').on(table.user_id),
-  permissionIdx: index('idx_user_permissions_permission').on(table.permission),
-  activeIdx: index('idx_user_permissions_active').on(table.is_active)
-}));
-
-// Auth providers table
-export const authProviders = pgTable('auth_providers', {
-  id: uuid('id').primaryKey().defaultRandom().notNull(),
-  user_id: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  provider: text('provider').notNull(),
-  provider_id: text('provider_id').notNull(),
-  provider_data: text('provider_data'),
-  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  last_updated: timestamp('last_updated', { withTimezone: true }).defaultNow().notNull()
-}, (table) => ({
-  userIdx: index('idx_auth_providers_user_id').on(table.user_id),
-  providerIdx: index('idx_auth_providers_provider').on(table.provider),
-  providerIdIdx: index('idx_auth_providers_provider_id').on(table.provider_id)
-}));
-
-// Auth verification tokens table
-export const authVerificationTokens = pgTable('auth_verification_tokens', {
-  id: uuid('id').primaryKey().defaultRandom().notNull(),
-  user_id: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
-  email: text('email').notNull(),
-  token: text('token').notNull(),
-  token_type: text('token_type').notNull(),
-  expires_at: timestamp('expires_at', { withTimezone: true }).notNull(),
-  used_at: timestamp('used_at', { withTimezone: true }),
-  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
-}, (table) => ({
-  userIdx: index('idx_auth_verification_user_id').on(table.user_id),
-  emailIdx: index('idx_auth_verification_email').on(table.email),
-  tokenIdx: index('idx_auth_verification_token').on(table.token),
-  expiresIdx: index('idx_auth_verification_expires').on(table.expires_at)
-}));
+// Auth-related tables moved to auth-schema.ts
 
 // KV store table for application data
 export const kvStore = pgTable('kv_store_d9b518ae', {
@@ -149,10 +102,7 @@ export const kvStore = pgTable('kv_store_d9b518ae', {
 
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(authSessions),
-  timeClockEntries: many(timeClockEntries),
-  permissions: many(userPermissions),
-  authProviders: many(authProviders),
-  verificationTokens: many(authVerificationTokens)
+  timeClockEntries: many(timeClockEntries)
 }));
 
 export const authSessionsRelations = relations(authSessions, ({ one }) => ({
@@ -169,30 +119,7 @@ export const timeClockEntriesRelations = relations(timeClockEntries, ({ one }) =
   })
 }));
 
-export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
-  user: one(users, {
-    fields: [userPermissions.user_id],
-    references: [users.id]
-  }),
-  grantedBy: one(users, {
-    fields: [userPermissions.granted_by],
-    references: [users.id]
-  })
-}));
-
-export const authProvidersRelations = relations(authProviders, ({ one }) => ({
-  user: one(users, {
-    fields: [authProviders.user_id],
-    references: [users.id]
-  })
-}));
-
-export const authVerificationTokensRelations = relations(authVerificationTokens, ({ one }) => ({
-  user: one(users, {
-    fields: [authVerificationTokens.user_id],
-    references: [users.id]
-  })
-}));
+// Auth-related relations moved to auth-schema.ts
 
 // =============================================================================
 // 📝 TYPE DEFINITIONS
@@ -204,11 +131,6 @@ export type AuthSession = typeof authSessions.$inferSelect;
 export type NewAuthSession = typeof authSessions.$inferInsert;
 export type TimeClockEntry = typeof timeClockEntries.$inferSelect;
 export type NewTimeClockEntry = typeof timeClockEntries.$inferInsert;
-export type UserPermission = typeof userPermissions.$inferSelect;
-export type NewUserPermission = typeof userPermissions.$inferInsert;
-export type AuthProvider = typeof authProviders.$inferSelect;
-export type NewAuthProvider = typeof authProviders.$inferInsert;
-export type AuthVerificationToken = typeof authVerificationTokens.$inferSelect;
-export type NewAuthVerificationToken = typeof authVerificationTokens.$inferInsert;
+// Auth-related types moved to auth-schema.ts
 export type KVStore = typeof kvStore.$inferSelect;
 export type NewKVStore = typeof kvStore.$inferInsert;

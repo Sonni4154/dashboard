@@ -18,7 +18,7 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
  * GET /api/auth/google
  * Initiate Google OAuth flow through Supabase
  */
-router.get('/google', (req: Request, res: Response) => {
+router.get('/google', async (req: Request, res: Response) => {
   if (!supabase) {
     return res.status(500).json({
       success: false,
@@ -27,7 +27,7 @@ router.get('/google', (req: Request, res: Response) => {
   }
 
   try {
-    const { data, error } = supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${req.protocol}://${req.get('host')}/api/auth/google/callback`

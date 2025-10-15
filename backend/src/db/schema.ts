@@ -100,7 +100,9 @@ export const items = qb.table('items', {
   metadata: json('metadata'),
   last_synced: timestamp('last_synced', { withTimezone: true }),
   created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  last_updated: timestamp('last_updated', { withTimezone: true }).defaultNow().notNull()
+  last_updated: timestamp('last_updated', { withTimezone: true }).defaultNow().notNull(),
+  track_qty_on_hand: boolean('track_qty_on_hand'),
+  inv_start_date: date('inv_start_date')
 });
 
 /* -----------------------------

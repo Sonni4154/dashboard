@@ -85,6 +85,8 @@ export const calendarEvents = pgTable('calendar_events', {
   title: varchar('title', { length: 500 }).notNull(),
   description: text('description'),
   location: text('location'),
+  assigned_by: integer('assigned_by'),
+  entity_id: varchar('entity_id', { length: 100 }),
   
   // Time
   start_time: timestamp('start_time').notNull(),

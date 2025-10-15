@@ -2,7 +2,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { eq, and, or, gt } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users, authSessions, userPermissions, type User, type NewUser } from '../db/user-schema.js';
+import { users, authSessions, type User, type NewUser } from '../db/user-schema.js';
+import { userPermissions } from '../db/auth-schema.js';
 import { logger } from '../utils/logger.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
@@ -34,7 +35,6 @@ export class UserService {
     password: string;
     firstName: string;
     lastName: string;
-    role?: UserRole;
   }): Promise<User> {
     try {
       const passwordHash = await this.hashPassword(userData.password);
@@ -111,7 +111,7 @@ export class UserService {
       lastName: user.last_name
     };
 
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as string });
   }
 
   /**
@@ -134,7 +134,7 @@ export class UserService {
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + parseInt(SESSION_EXPIRES_IN.replace('d', '')));
 
-      await db.insert(userSessions).values({
+      await db.insert(authSessions).values({
         userId,
         sessionToken,
         expiresAt
@@ -167,7 +167,7 @@ export class UserService {
       }
 
       // Update last accessed time
-      await db.update(userSessions)
+      await db.update(authSessions)
         .set({ lastAccessed: new Date() })
         .where(eq(userSessions.id, session.id));
 
@@ -296,7 +296,7 @@ export class UserService {
   /**
    * Check if user has permission
    */
-  static async hasPermission(userId: number, permission: Permission): Promise<boolean> {
+  static async hasPermission(userId: string, permission: string): Promise<boolean> {
     try {
       const user = await this.getUserById(userId);
       if (!user) {
@@ -311,7 +311,7 @@ export class UserService {
       // Check specific permission
       const userPermission = await db.query.userPermissions.findFirst({
         where: and(
-          eq(userPermissions.userId, userId),
+          eq(userPermissions.user_id, userId),
           eq(userPermissions.permission, permission)
         )
       });
@@ -326,12 +326,12 @@ export class UserService {
   /**
    * Grant permission to user
    */
-  static async grantPermission(userId: number, permission: Permission, grantedBy: number): Promise<boolean> {
+  static async grantPermission(userId: string, permission: string, grantedBy: string): Promise<boolean> {
     try {
       await db.insert(userPermissions).values({
-        userId,
+        user_id: userId,
         permission,
-        grantedBy
+        granted_by: grantedBy
       });
 
       logger.info(`Permission granted: ${permission} to user ${userId}`);
@@ -345,11 +345,11 @@ export class UserService {
   /**
    * Revoke permission from user
    */
-  static async revokePermission(userId: number, permission: Permission): Promise<boolean> {
+  static async revokePermission(userId: string, permission: string): Promise<boolean> {
     try {
       await db.delete(userPermissions)
         .where(and(
-          eq(userPermissions.userId, userId),
+          eq(userPermissions.user_id, userId),
           eq(userPermissions.permission, permission)
         ));
 
@@ -364,7 +364,7 @@ export class UserService {
   /**
    * Get user permissions
    */
-  static async getUserPermissions(userId: number): Promise<Permission[]> {
+  static async getUserPermissions(userId: string): Promise<string[]> {
     try {
       const user = await this.getUserById(userId);
       if (!user) {
@@ -393,7 +393,7 @@ export class UserService {
         }
       });
 
-      return permissions.map(p => p.permission as Permission);
+      return permissions.map(p => p.permission);
     } catch (error) {
       logger.error('Error getting user permissions:', error);
       return [];

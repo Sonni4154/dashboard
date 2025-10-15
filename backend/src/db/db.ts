@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import * as qbSchema from './schema.js';
 import * as calendarSchema from './calendar-schema.js';
 import * as userSchema from './user-schema.js';
+import * as authSchema from './auth-schema.js';
 
 // Resolve correct .env path (works in dist/)
 const __filename = fileURLToPath(import.meta.url);
@@ -36,6 +37,7 @@ const schema = {
   ...qbSchema,
   ...calendarSchema,
   ...userSchema,
+  ...authSchema,
 };
 
 // Create Drizzle instance with combined schema
@@ -135,4 +137,5 @@ export async function checkDatabaseConnection(): Promise<boolean> {
 export * from './schema.js';
 export * from './calendar-schema.js';
 export * from './user-schema.js';
+export * from './auth-schema.js';
 

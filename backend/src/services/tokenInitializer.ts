@@ -47,7 +47,6 @@ export async function initializeTokensFromEnv(): Promise<void> {
       scope: process.env.QBO_SCOPE || 'com.intuit.quickbooks.accounting',
       expires_at: expires_at,
       refresh_token_expires_at: refresh_token_expires_at,
-      environment: environment,
       is_active: true,
       created_at: now,
       last_updated: now,

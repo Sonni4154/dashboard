@@ -133,7 +133,7 @@ router.get('/database', async (req: Request, res: Response) => {
     for (const table of tables) {
       try {
         const result = await db.execute(`SELECT COUNT(*) as count FROM quickbooks.${table}`);
-        counts[table] = parseInt(result.rows[0].count);
+        counts[table] = parseInt(result[0].count);
       } catch (error) {
         counts[table] = -1; // Table doesn't exist
       }
@@ -149,11 +149,11 @@ router.get('/database', async (req: Request, res: Response) => {
       data: {
         connection: {
           status: 'connected',
-          current_time: connectionTest.rows[0].current_time,
-          version: connectionTest.rows[0].version
+          current_time: connectionTest[0].current_time,
+          version: connectionTest[0].version
         },
         tables: counts,
-        database_size: sizeResult.rows[0].size
+        database_size: sizeResult[0].size
       }
     });
   } catch (error: any) {

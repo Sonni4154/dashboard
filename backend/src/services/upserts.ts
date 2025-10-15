@@ -134,6 +134,7 @@ export async function upsertInvoice(inv: any, realmId: string) {
       for (const line of inv.Line) {
         if (line.SalesItemLineDetail || line.DescriptionLineDetail) {
           const lineItemData = {
+            id: BigInt(Date.now() + Math.random() * 1000), // Generate unique ID
             invoice_id: String(inv.Id),
             line_num: line.LineNum || null,
             detail_type: line.DetailType || null,
@@ -224,6 +225,7 @@ export async function upsertEstimate(est: any, realmId: string) {
       for (const line of est.Line) {
         if (line.SalesItemLineDetail || line.DescriptionLineDetail) {
           const lineItemData = {
+            id: BigInt(Date.now() + Math.random() * 1000), // Generate unique ID
             estimate_id: String(est.Id),
             line_num: line.LineNum || null,
             detail_type: line.DetailType || null,

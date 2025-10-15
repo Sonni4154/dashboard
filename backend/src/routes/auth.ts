@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { UserServiceSimple } from '../services/userServiceSimple.js';
+import { UserService } from '../services/userService.js';
 import { logger } from '../utils/logger.js';
 import crypto from 'crypto';
 
