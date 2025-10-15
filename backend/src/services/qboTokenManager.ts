@@ -69,6 +69,82 @@ export class QuickBooksTokenManager {
   }
 
   /**
+   * Get a valid token for API calls
+   */
+  public async getValidToken(): Promise<any> {
+    try {
+      return await RLSService.withServiceRole(async () => {
+        const [currentToken] = await db
+          .select()
+          .from(tokens)
+          .where(eq(tokens.is_active, true))
+          .orderBy(desc(tokens.last_updated))
+          .limit(1);
+        
+        if (!currentToken) {
+          return null;
+        }
+        
+        // Check if token is expired
+        if (currentToken.expires_at && new Date() >= currentToken.expires_at) {
+          logger.warn('⚠️ Token is expired, attempting refresh...');
+          const refreshed = await this.refreshAccessToken(currentToken);
+          if (refreshed) {
+            // Get the refreshed token
+            const [refreshedToken] = await db
+              .select()
+              .from(tokens)
+              .where(eq(tokens.is_active, true))
+              .orderBy(desc(tokens.last_updated))
+              .limit(1);
+            return refreshedToken;
+          }
+          return null;
+        }
+        
+        return currentToken;
+      });
+    } catch (error) {
+      logger.error('❌ Error getting valid token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get token information for debugging
+   */
+  public async getTokenInfo(): Promise<any> {
+    try {
+      return await RLSService.withServiceRole(async () => {
+        const [currentToken] = await db
+          .select()
+          .from(tokens)
+          .where(eq(tokens.is_active, true))
+          .orderBy(desc(tokens.last_updated))
+          .limit(1);
+        
+        if (!currentToken) {
+          return { status: 'no_token', message: 'No active token found' };
+        }
+        
+        const isExpired = currentToken.expires_at && new Date() >= currentToken.expires_at;
+        
+        return {
+          status: isExpired ? 'expired' : 'valid',
+          realm_id: currentToken.realm_id,
+          expires_at: currentToken.expires_at,
+          is_active: currentToken.is_active,
+          last_updated: currentToken.last_updated,
+          token_type: currentToken.token_type
+        };
+      });
+    } catch (error) {
+      logger.error('❌ Error getting token info:', error);
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  /**
    * Check and refresh tokens if needed
    */
   public async checkAndRefreshTokens(): Promise<boolean> {

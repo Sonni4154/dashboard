@@ -133,7 +133,7 @@ router.get('/database', async (req: Request, res: Response) => {
     for (const table of tables) {
       try {
         const result = await db.execute(`SELECT COUNT(*) as count FROM quickbooks.${table}`);
-        counts[table] = parseInt(result[0].count);
+        counts[table] = parseInt(String(result[0].count));
       } catch (error) {
         counts[table] = -1; // Table doesn't exist
       }
@@ -231,9 +231,9 @@ router.get('/system', async (req: Request, res: Response) => {
     // Get disk usage
     try {
       const { stdout } = await execAsync('df -h /');
-      systemInfo.disk_usage = stdout;
+      (systemInfo as any).disk_usage = stdout;
     } catch (error) {
-      systemInfo.disk_usage = 'unavailable';
+      (systemInfo as any).disk_usage = 'unavailable';
     }
 
     res.json({

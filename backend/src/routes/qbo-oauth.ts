@@ -134,7 +134,7 @@ router.get('/callback', async (req: Request, res: Response) => {
       is_active: true,
       created_at: now,
       last_updated: now,
-    });
+    } as any);
 
     logger.info('QuickBooks tokens saved successfully', { realmId });
 

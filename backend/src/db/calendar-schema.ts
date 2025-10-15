@@ -85,7 +85,7 @@ export const calendarEvents = pgTable('calendar_events', {
   title: varchar('title', { length: 500 }).notNull(),
   description: text('description'),
   location: text('location'),
-  assigned_by: integer('assigned_by'),
+  assigned_by: varchar('assigned_by', { length: 36 }), // UUID reference to users
   entity_id: varchar('entity_id', { length: 100 }),
   
   // Time
@@ -130,7 +130,7 @@ export const workAssignments = pgTable('work_assignments', {
   employee_id: integer('employee_id').notNull(),
   
   // Assignment details
-  assigned_by: integer('assigned_by'), // Employee ID of admin who assigned
+  assigned_by: varchar('assigned_by', { length: 36 }), // UUID reference to users
   assigned_at: timestamp('assigned_at').defaultNow().notNull(),
   
   // Ordering (for service route)

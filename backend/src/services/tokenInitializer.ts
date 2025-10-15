@@ -50,7 +50,7 @@ export async function initializeTokensFromEnv(): Promise<void> {
       is_active: true,
       created_at: now,
       last_updated: now,
-    });
+    } as any);
 
     logger.info(`✅ QuickBooks token initialized for realm ${realm_id}`);
   } catch (error) {
