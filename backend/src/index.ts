@@ -25,6 +25,7 @@ import qboOAuthRouter from './routes/qbo-oauth.js';
 import debugRouter from './routes/debug.js';
 import authRouter from './routes/auth.js';
 import googleOAuthRouter from './routes/google-oauth.js';
+import deployRouter from './routes/deploy.js';
 import usersRouter from './routes/users.js';
 import adminRouter from './routes/admin.js';
 import v1Router from './routes/v1.js';
@@ -170,6 +171,9 @@ app.use('/api/qbo', qboOAuthRouter);
     // Authentication endpoints (no auth required for login/register)
     app.use('/api/auth', authRouter);
     app.use('/api/auth', googleOAuthRouter);
+    
+    // Deployment endpoints
+    app.use('/api/deploy', deployRouter);
 
 // Protected API routes (require authentication)
 app.use('/api/customers', devAuth, customersRouter);

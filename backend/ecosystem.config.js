@@ -1,79 +1,55 @@
 module.exports = {
-  apps: [
-    {
-      name: 'marin-pest-control-backend',
-      script: 'dist/index.js',
-      instances: 1,
-      exec_mode: 'fork',
-      env_file: '/opt/dashboard/backend/.env',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 5000,
-      },
-      env_development: {
-        NODE_ENV: 'development',
-        PORT: 5000,
-        SKIP_AUTH: 'true',
-      },
-      log_file: './logs/backend.log',
-      out_file: './logs/backend-out.log',
-      error_file: './logs/backend-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      max_memory_restart: '1G',
-      restart_delay: 4000,
-      max_restarts: 10,
-      min_uptime: '10s',
-      watch: false,
-      ignore_watch: ['node_modules', 'logs', 'dist'],
+  apps: [{
+    name: 'marin-pest-control-backend',
+    script: 'dist/index.js',
+    cwd: './backend',
+    instances: 1,
+    exec_mode: 'fork',
+    watch: false,
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
     },
-    {
-      name: 'marin-pest-control-token-refresher',
-      script: 'dist/services/tokenRefresher.js',
-      instances: 1,
-      exec_mode: 'fork',
-      env_file: '/opt/dashboard/backend/.env',
-      env: {
-        NODE_ENV: 'production',
-      },
-      env_development: {
-        NODE_ENV: 'development',
-      },
-      log_file: './logs/token-refresher.log',
-      out_file: './logs/token-refresher-out.log',
-      error_file: './logs/token-refresher-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      max_memory_restart: '512M',
-      restart_delay: 4000,
-      max_restarts: 10,
-      min_uptime: '10s',
-      watch: false,
-      ignore_watch: ['node_modules', 'logs', 'dist'],
+    env_production: {
+      NODE_ENV: 'production',
+      PORT: 5000
     },
-    {
-      name: 'marin-pest-control-sync-service',
-      script: 'dist/services/syncService.js',
-      instances: 1,
-      exec_mode: 'fork',
-      env_file: '/opt/dashboard/backend/.env',
-      env: {
-        NODE_ENV: 'production',
-      },
-      env_development: {
-        NODE_ENV: 'development',
-      },
-      log_file: './logs/sync-service.log',
-      out_file: './logs/sync-service-out.log',
-      error_file: './logs/sync-service-error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      max_memory_restart: '1G',
-      restart_delay: 4000,
-      max_restarts: 10,
-      min_uptime: '10s',
-      watch: false,
-      ignore_watch: ['node_modules', 'logs', 'dist'],
-    },
-  ],
+    error_file: './logs/error.log',
+    out_file: './logs/out.log',
+    log_file: './logs/combined.log',
+    time: true,
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    merge_logs: true,
+    max_restarts: 10,
+    min_uptime: '10s',
+    restart_delay: 4000,
+    kill_timeout: 5000,
+    wait_ready: true,
+    listen_timeout: 10000,
+    // Health check
+    health_check_grace_period: 3000,
+    // Auto restart on file changes (disabled in production)
+    ignore_watch: [
+      'node_modules',
+      'logs',
+      'dist'
+    ],
+    // Environment variables
+    env_file: '.env',
+    // Process management
+    autorestart: true,
+    max_restarts: 10,
+    min_uptime: '10s',
+    // Logging
+    log_type: 'json',
+    // Monitoring
+    pmx: true,
+    // Advanced options
+    node_args: '--max-old-space-size=1024',
+    // Graceful shutdown
+    kill_timeout: 5000,
+    wait_ready: true,
+    listen_timeout: 10000
+  }]
 };
