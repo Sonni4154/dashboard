@@ -111,7 +111,7 @@ export class UserService {
       lastName: user.last_name
     };
 
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as string });
   }
 
   /**
@@ -282,7 +282,7 @@ export class UserService {
         .set({ 
           password_hash: newPasswordHash,
           updatedAt: new Date()
-        })
+        } as any)
         .where(eq(users.id, String(id)));
 
       logger.info(`Password changed for user: ${user.username}`);

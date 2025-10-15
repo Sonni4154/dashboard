@@ -275,7 +275,7 @@ router.post('/:id/change-password', async (req: Request, res: Response) => {
       });
     }
 
-    const success = await UserService.changePassword(String(userId), currentPassword, newPassword);
+    const success = await UserService.changePassword(parseInt(userId), currentPassword, newPassword);
     if (!success) {
       return res.status(400).json({
         success: false,
