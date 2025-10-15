@@ -1,0 +1,105 @@
+# Dependencies
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Environment variables (NEVER commit these!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+backend/.env.local
+frontend/.env
+frontend/.env.local
+backendenv
+frontendenv
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+backend/logs/
+backend/*.log
+
+# Build outputs
+dist/
+dist-ssr/
+backend/dist/
+frontend/dist/
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.cursor/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.temp/
+supabase/.temp/
+
+# Backups
+backups/
+*.tar.gz
+*.zip
+*.bak
+
+# Package manager
+.pnpm-store/
+
+# PM2
+.pm2/
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Production files (contain sensitive data)
+backend/env.production
+frontend/env.production
+
+# Example/template files with API keys (for reference only)
+backend/env.example
+backend/env.production.template
+backend/env-template.txt
+
+# Debug files
+npm-debug.log
+yarn-debug.log
+.eslintcache
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Yarn
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*

@@ -1,0 +1,428 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "dash3 API",
+    "version": "1.0.0",
+    "description": "QuickBooks integration with Neon database for Marin Pest Control"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development server"
+    },
+    {
+      "url": "https://wemakemarin.com",
+      "description": "Production server"
+    }
+  ],
+  "paths": {
+    "/api/customers": {
+      "get": {
+        "summary": "List customers",
+        "tags": ["Customers"],
+        "responses": {
+          "200": {
+            "description": "List of customers from QuickBooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Customer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/invoices": {
+      "get": {
+        "summary": "List invoices",
+        "tags": ["Invoices"],
+        "responses": {
+          "200": {
+            "description": "List of invoices from QuickBooks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Invoice"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/qbo/connect": {
+      "get": {
+        "summary": "Get OAuth URL",
+        "tags": ["QuickBooks OAuth"],
+        "responses": {
+          "200": {
+            "description": "OAuth authorization URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "authUrl": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/qbo/callback": {
+      "get": {
+        "summary": "OAuth callback",
+        "tags": ["QuickBooks OAuth"],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "realmId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to dashboard"
+          },
+          "400": {
+            "description": "Missing code or realmId"
+          },
+          "500": {
+            "description": "OAuth error"
+          }
+        }
+      }
+    },
+    "/api/qbo/refresh": {
+      "post": {
+        "summary": "Admin-trigger token refresh",
+        "tags": ["QuickBooks OAuth"],
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token refresh successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/quickbooks/callback": {
+      "post": {
+        "summary": "Intuit Webhooks",
+        "tags": ["Webhooks"],
+        "parameters": [
+          {
+            "name": "intuit-signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook received",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "received": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid signature"
+          }
+        }
+      }
+    },
+    "/api/neon/projects": {
+      "get": {
+        "summary": "List Neon projects (admin)",
+        "tags": ["Neon Admin"],
+        "parameters": [
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of Neon projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "projects": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "region_id": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/neon/projects/{projectId}/branches": {
+      "get": {
+        "summary": "List Neon branches (admin)",
+        "tags": ["Neon Admin"],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of branches",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branches": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    },
+    "/api/neon/projects/{projectId}/endpoints": {
+      "get": {
+        "summary": "List Neon endpoints (admin)",
+        "tags": ["Neon Admin"],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-admin-token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of endpoints",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "endpoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "primaryEmailAddr": {
+            "type": "string"
+          },
+          "primaryPhone": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "balance": {
+            "type": "number"
+          }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "docNumber": {
+            "type": "string"
+          },
+          "txnDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "totalAmt": {
+            "type": "number"
+          },
+          "balance": {
+            "type": "number"
+          },
+          "customerId": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
+
