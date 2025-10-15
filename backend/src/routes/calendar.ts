@@ -904,5 +904,102 @@ router.post('/sync', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * DELETE /api/clock/entries/:id
+ * Delete a time entry (admin only)
+ */
+router.delete('/clock/entries/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Time entry ID is required',
+      });
+    }
+
+    const [deletedEntry] = await db
+      .delete(timeEntries)
+      .where(eq(timeEntries.id, parseInt(id)))
+      .returning();
+
+    if (!deletedEntry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Time entry not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Time entry deleted successfully',
+      data: {
+        id: deletedEntry.id,
+        employee_id: deletedEntry.employee_id,
+        clock_in: deletedEntry.clock_in,
+        clock_out: deletedEntry.clock_out,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error deleting time entry:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete time entry',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * PUT /api/clock/entries/:id/approve
+ * Approve a time entry (admin only)
+ */
+router.put('/clock/entries/:id/approve', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { approved, approved_by, notes } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: 'Time entry ID is required',
+      });
+    }
+
+    const [updatedEntry] = await db
+      .update(timeEntries)
+      .set({
+        approved: approved === true,
+        approved_by: approved_by || null,
+        approval_notes: notes || null,
+        approved_at: approved === true ? new Date() : null,
+        last_updated: new Date(),
+      })
+      .where(eq(timeEntries.id, parseInt(id)))
+      .returning();
+
+    if (!updatedEntry) {
+      return res.status(404).json({
+        success: false,
+        message: 'Time entry not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Time entry ${approved ? 'approved' : 'unapproved'} successfully`,
+      data: updatedEntry,
+    });
+  } catch (error: any) {
+    logger.error('Error updating time entry approval:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update time entry approval',
+      error: error.message,
+    });
+  }
+});
+
 export default router;
 

@@ -13,9 +13,11 @@ import { relations } from 'drizzle-orm';
 // Users table for authentication and authorization
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
-  username: varchar('username', { length: 50 }).unique().notNull(),
+  username: varchar('username', { length: 50 }).unique(),
   email: varchar('email', { length: 255 }).unique().notNull(),
-  passwordHash: text('password_hash').notNull(),
+  passwordHash: text('password_hash'), // Optional for OAuth users
+  googleId: varchar('google_id', { length: 255 }).unique(),
+  profilePicture: text('profile_picture'),
   firstName: varchar('first_name', { length: 100 }).notNull(),
   lastName: varchar('last_name', { length: 100 }).notNull(),
   role: varchar('role', { length: 20 }).notNull().default('user'),
@@ -26,6 +28,7 @@ export const users = pgTable('users', {
 }, (table) => ({
   emailIdx: index('idx_users_email').on(table.email),
   usernameIdx: index('idx_users_username').on(table.username),
+  googleIdIdx: index('idx_users_google_id').on(table.googleId),
   roleIdx: index('idx_users_role').on(table.role),
   activeIdx: index('idx_users_active').on(table.isActive)
 }));

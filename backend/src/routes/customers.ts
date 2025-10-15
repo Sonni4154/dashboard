@@ -28,24 +28,20 @@ router.get('/', async (req: Request, res: Response) => {
       .limit(limitNum)
       .offset(offset);
 
-    res.json({
-      success: true,
-      data: allCustomers,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total: total,
-        pages: Math.ceil(total / limitNum),
-      },
-    });
-  } catch (error: any) {
-    logger.error('Error fetching customers:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch customers',
-      error: error.message,
-    });
-  }
+        res.successResponse(
+          allCustomers,
+          'Customers retrieved successfully',
+          {
+            page: pageNum,
+            limit: limitNum,
+            total: total,
+            pages: Math.ceil(total / limitNum),
+          }
+        );
+      } catch (error: any) {
+        logger.error('Error fetching customers:', error);
+        res.errorResponse('Failed to fetch customers', error.message, 500);
+      }
 });
 
 /**
@@ -60,21 +56,14 @@ router.get('/stats', async (req: Request, res: Response) => {
       .from(customers)
       .where(eq(customers.active, true));
 
-    res.json({
-      success: true,
-      data: {
-        total: totalCustomers?.count || 0,
-        active: activeCustomers?.count || 0,
-        inactive: (totalCustomers?.count || 0) - (activeCustomers?.count || 0),
-      },
-    });
+    res.successResponse({
+      total: totalCustomers?.count || 0,
+      active: activeCustomers?.count || 0,
+      inactive: (totalCustomers?.count || 0) - (activeCustomers?.count || 0),
+    }, 'Customer statistics retrieved successfully');
   } catch (error: any) {
     logger.error('Error fetching customer stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch customer statistics',
-      error: error.message,
-    });
+    res.errorResponse('Failed to fetch customer statistics', error.message, 500);
   }
 });
 
@@ -100,17 +89,10 @@ router.get('/:id', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({
-      success: true,
-      data: customer,
-    });
+        res.successResponse(customer, 'Customer retrieved successfully');
   } catch (error: any) {
     logger.error('Error fetching customer:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch customer',
-      error: error.message,
-    });
+    res.errorResponse('Failed to fetch customer', error.message, 500);
   }
 });
 

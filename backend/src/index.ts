@@ -7,6 +7,8 @@ import dotenv from 'dotenv';
 import { logger } from './utils/logger.js';
 import { verifyAuth, devAuth } from './middleware/auth.js';
 import { verifyCustomAuth, devCustomAuth } from './middleware/customAuth.js';
+import { responseEnvelope, errorHandler } from './middleware/responseEnvelope.js';
+import { devAdminAuth } from './middleware/adminAuth.js';
 import { qboTokenManager } from './services/qboTokenManager.js';
 
 // Import routes
@@ -21,7 +23,10 @@ import calendarRouter from './routes/calendar.js';
 import qboOAuthRouter from './routes/qbo-oauth.js';
 import debugRouter from './routes/debug.js';
 import authRouter from './routes/auth.js';
+import googleOAuthRouter from './routes/google-oauth.js';
 import usersRouter from './routes/users.js';
+import adminRouter from './routes/admin.js';
+import v1Router from './routes/v1.js';
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +76,9 @@ app.use('/api/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Response envelope middleware
+app.use(responseEnvelope);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -156,8 +164,9 @@ app.use('/api/webhook', webhookRouter);
 // QuickBooks OAuth endpoints (no auth required for initial connection)
 app.use('/api/qbo', qboOAuthRouter);
 
-// Authentication endpoints (no auth required for login/register)
-app.use('/api/auth', authRouter);
+    // Authentication endpoints (no auth required for login/register)
+    app.use('/api/auth', authRouter);
+    app.use('/api/auth', googleOAuthRouter);
 
 // Protected API routes (require authentication)
 app.use('/api/customers', devAuth, customersRouter);
@@ -180,6 +189,12 @@ app.use('/api/users', devCustomAuth, usersRouter);
 
 // Debug and admin routes (require authentication)
 app.use('/api/debug', devAuth, debugRouter);
+
+    // Admin routes (require admin authentication)
+    app.use('/api/v1/admin', devAdminAuth, adminRouter);
+
+// Versioned API routes (aliases to existing endpoints)
+app.use('/api/v1', v1Router);
 
 // Auth verification endpoint
 app.get('/api/auth/verify', verifyAuth, (req, res) => {
@@ -236,21 +251,7 @@ app.use('*', (req, res) => {
 });
 
 // Global error handler
-app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  logger.error('Unhandled error:', {
-    error: error.message,
-    stack: error.stack,
-    url: req.url,
-    method: req.method,
-    timestamp: new Date().toISOString(),
-  });
-
-  res.status(500).json({
-    success: false,
-    error: 'Internal server error',
-    message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong',
-  });
-});
+app.use(errorHandler);
 
 // Initialize server
 async function startServer() {
