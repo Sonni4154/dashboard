@@ -7,8 +7,13 @@ dotenv.config();
 async function runMigration() {
   try {
     console.log('🔄 Running database migration...');
+    console.log('⚠️  Note: This project uses Supabase. Schema changes should be made in Supabase first.');
+    console.log('📖 See backend/db/README.md for proper migration workflow.');
     
-    const migrationSQL = await readFile('./db/migrations/005_add_missing_quickbooks_tables.sql', 'utf8');
+    // This script is kept for reference but should not be used
+    console.log('❌ This migration script is deprecated.');
+    console.log('✅ Use Supabase Studio or CLI for schema changes instead.');
+    process.exit(1);
     
     // Split the migration into individual statements
     const statements = migrationSQL

@@ -12,7 +12,7 @@
 import dotenv from 'dotenv';
 import { readFileSync } from 'fs';
 
-dotenv.config({ path: './env.production' });
+dotenv.config();
 
 const COLORS = {
   reset: '\x1b[0m',
@@ -157,23 +157,23 @@ if (redirectUri) {
 
 console.log();
 
-// Check Migration File
-log('4. Migration File', 'bold');
+// Check Schema File
+log('4. Schema Configuration', 'bold');
 log('─────────────────────────────────────────────────────────', 'cyan');
 
 try {
-  const migrationPath = './db/migrations/002_update_tokens_table.sql';
-  const migrationContent = readFileSync(migrationPath, 'utf-8');
+  const schemaPath = './src/db/schema.ts';
+  const schemaContent = readFileSync(schemaPath, 'utf-8');
   check(
-    migrationContent.includes('quickbooks.tokens'),
-    'Migration file exists and looks correct',
-    'Migration file not found or invalid'
+    schemaContent.includes('quickbooks.tokens'),
+    'Schema file exists and includes tokens table',
+    'Schema file not found or invalid'
   );
 } catch (e) {
   allChecks &= check(
     false,
-    'Migration file exists',
-    'Migration file not found: db/migrations/002_update_tokens_table.sql'
+    'Schema file exists',
+    'Schema file not found: src/db/schema.ts'
   );
 }
 
@@ -192,7 +192,7 @@ try {
   );
 } catch (e) {
   log('✗ Backend not built - run: npm run build', 'red');
-  log('  This is required before running token initialization', 'yellow');
+  log('  This is required before running tests', 'yellow');
   allChecks = false;
 }
 
@@ -206,16 +206,19 @@ if (allChecks) {
   console.log();
   log('Next Steps:', 'bold');
   log('─────────────────────────────────────────────────────────', 'cyan');
-  log('1. Run database migration:', 'blue');
-  log('   psql $DATABASE_URL -f db/migrations/002_update_tokens_table.sql', 'reset');
+  log('1. Build the backend:', 'blue');
+  log('   npm run build', 'reset');
   console.log();
-  log('2. Initialize tokens from refresh token:', 'blue');
-  log('   node init-tokens-from-refresh.js', 'reset');
+  log('2. Test database connection:', 'blue');
+  log('   node test-scripts/test-db.js', 'reset');
   console.log();
-  log('3. Rebuild and restart backend:', 'blue');
-  log('   npm run build && pm2 restart backend', 'reset');
+  log('3. Test QuickBooks tokens:', 'blue');
+  log('   node test-scripts/test-qbo-tokens.js', 'reset');
   console.log();
-  log('4. Test the integration:', 'blue');
+  log('4. Start the backend:', 'blue');
+  log('   npm run dev', 'reset');
+  console.log();
+  log('5. Test the API endpoints:', 'blue');
   log('   curl http://localhost:5000/api/tokens/status', 'reset');
   log('   curl http://localhost:5000/api/customers', 'reset');
   console.log();

@@ -7,16 +7,10 @@ dotenv.config();
 
 async function runMigration() {
   try {
-    // Get migration file from command line argument
-    const migrationFile = process.argv[2];
-    
-    if (!migrationFile) {
-      console.error('❌ Please provide a migration file path');
-      console.log('Usage: node run-migration-flexible.js <migration-file.sql>');
-      process.exit(1);
-    }
-
-    console.log(`🔄 Running database migration: ${migrationFile}`);
+    console.log('⚠️  DEPRECATED: This project uses Supabase for schema management.');
+    console.log('📖 See backend/db/README.md for proper migration workflow.');
+    console.log('✅ Use Supabase Studio or CLI instead of this script.');
+    process.exit(1);
 
     const migrationSQL = await readFile(migrationFile, 'utf8');
 

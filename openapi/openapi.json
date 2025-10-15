@@ -1,13 +1,13 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "dash3 API",
+    "title": "Marin Pest Control Dashboard API",
     "version": "1.0.0",
-    "description": "QuickBooks integration with Neon database for Marin Pest Control"
+    "description": "Comprehensive business management system integrating QuickBooks Online, Google Calendar, and custom scheduling features for Marin Pest Control"
   },
   "servers": [
     {
-      "url": "http://localhost:3000",
+      "url": "http://localhost:5000",
       "description": "Development server"
     },
     {
@@ -16,6 +16,289 @@
     }
   ],
   "paths": {
+    "/health": {
+      "get": {
+        "summary": "Basic health check",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "System is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "ok": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "timestamp": { "type": "string" },
+                    "version": { "type": "string" },
+                    "environment": { "type": "string" },
+                    "database": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "API health check with database connectivity",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "ok": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "timestamp": { "type": "string" },
+                    "database": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync": {
+      "post": {
+        "summary": "Trigger full QuickBooks data sync",
+        "tags": ["Sync"],
+        "responses": {
+          "200": {
+            "description": "Sync completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "timestamp": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sync/status": {
+      "get": {
+        "summary": "Get sync status and statistics",
+        "tags": ["Sync"],
+        "responses": {
+          "200": {
+            "description": "Sync status information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "tokenStatus": { "type": "string" },
+                        "lastSync": { "type": "string" },
+                        "recordCounts": {
+                          "type": "object",
+                          "properties": {
+                            "customers": { "type": "number" },
+                            "items": { "type": "number" },
+                            "invoices": { "type": "number" },
+                            "estimates": { "type": "number" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/calendar/events/today": {
+      "get": {
+        "summary": "Get today's calendar events",
+        "tags": ["Calendar"],
+        "parameters": [
+          {
+            "name": "include_assigned",
+            "in": "query",
+            "schema": { "type": "boolean" },
+            "description": "Include assigned events"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Today's events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CalendarEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/work-queue": {
+      "get": {
+        "summary": "Get unassigned work for today",
+        "tags": ["Work Queue"],
+        "responses": {
+          "200": {
+            "description": "Unassigned work queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CalendarEvent"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clock/in": {
+      "post": {
+        "summary": "Clock in employee",
+        "tags": ["Time Clock"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "employee_id": { "type": "string" },
+                  "location": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clocked in successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/TimeEntry" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clock/out": {
+      "post": {
+        "summary": "Clock out employee",
+        "tags": ["Time Clock"],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "employee_id": { "type": "string" },
+                  "location": { "type": "string" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clocked out successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": { "$ref": "#/components/schemas/TimeEntry" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/clock/status": {
+      "get": {
+        "summary": "Get current clock status",
+        "tags": ["Time Clock"],
+        "parameters": [
+          {
+            "name": "employee_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clock status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": { "type": "boolean" },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "is_clocked_in": { "type": "boolean" },
+                        "active_entry": { "$ref": "#/components/schemas/TimeEntry" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/customers": {
       "get": {
         "summary": "List customers",

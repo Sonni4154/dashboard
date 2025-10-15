@@ -1,85 +1,249 @@
-# Marin Pest Control Dashboard - API Endpoints Reference
+# 🚀 Marin Pest Control Dashboard - API Endpoints
 
-## Base URL
-- **Development**: `http://localhost:5000`
-- **Production**: `https://your-domain.com`
+## 📋 Overview
 
-## Authentication
-All protected endpoints require a valid JWT token in the Authorization header:
+This document provides a comprehensive list of all available API endpoints for the Marin Pest Control Dashboard. The API is built with Express.js and provides endpoints for QuickBooks integration, Google Calendar management, employee scheduling, and business operations.
+
+---
+
+## 🔐 Authentication
+
+All protected endpoints require authentication via JWT tokens. Include the token in the Authorization header:
+
 ```
-Authorization: Bearer <jwt_token>
+Authorization: Bearer <your-jwt-token>
 ```
 
 ---
 
-## 🏥 Health & Status Endpoints
+## 🏥 Health & System Endpoints
 
 ### Health Check
-```http
-GET /health
-```
-**Description**: Basic health check for the server  
-**Authentication**: None required  
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Marin Pest Control Backend is healthy",
-  "timestamp": "2025-10-06T00:00:00.000Z",
-  "version": "2.0.0",
-  "environment": "development"
-}
-```
+- **GET** `/health` - Basic health check
+- **GET** `/api/health` - API health check with database connectivity
+- **GET** `/api/debug/health` - Detailed system health check
 
-### Auth Verification
-```http
-GET /api/auth/verify
-```
-**Description**: Verify JWT token validity  
-**Authentication**: Required  
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Token is valid",
-  "user": {
-    "id": "user_id",
-    "role": "admin"
-  },
-  "timestamp": "2025-10-06T00:00:00.000Z"
-}
-```
+### System Information
+- **GET** `/api/debug/system` - System information and resource usage
+- **GET** `/api/debug/database` - Database connectivity and schema info
+- **GET** `/api/debug/logs` - Recent log entries
+- **POST** `/api/debug/test-connection` - Test specific connections
 
 ---
 
-## 👥 Customer Endpoints
+## 🔗 QuickBooks Integration
 
-### Get All Customers
-```http
-GET /api/customers
-```
-**Query Parameters**:
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 50)
-- `search` (optional): Search by display name
+### OAuth & Authentication
+- **GET** `/api/qbo/connect` - Get QuickBooks OAuth URL
+- **GET** `/api/qbo/callback` - OAuth callback handler
+- **GET** `/api/qbo/token-status` - Get current token status
+- **POST** `/api/qbo/refresh-token` - Force token refresh
 
-**Response**:
+### Token Management
+- **GET** `/api/tokens/status` - Get token status and validity
+- **GET** `/api/tokens/info` - Get detailed token information (admin)
+- **DELETE** `/api/tokens/:id` - Delete specific token (admin)
+
+### Data Synchronization
+- **POST** `/api/sync` - Trigger full QuickBooks data sync
+- **POST** `/api/sync/:entityType` - Sync specific entity type
+- **GET** `/api/sync/status` - Get sync status and statistics
+- **POST** `/api/sync/refresh-token` - Manually refresh token
+- **GET** `/api/sync/health` - Check sync service health
+
+---
+
+## 👥 Customer Management
+
+### Customer Operations
+- **GET** `/api/customers` - List all customers (paginated)
+- **GET** `/api/customers/:id` - Get specific customer
+- **GET** `/api/customers/stats` - Get customer statistics
+
+### Query Parameters
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 50)
+- `search` - Search term (future implementation)
+
+---
+
+## 📦 Product/Item Management
+
+### Item Operations
+- **GET** `/api/items` - List all items (paginated)
+- **GET** `/api/items/:id` - Get specific item
+- **GET** `/api/items/stats` - Get item statistics
+
+### Query Parameters
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 50)
+
+---
+
+## 🧾 Invoice Management
+
+### Invoice Operations
+- **GET** `/api/invoices` - List all invoices with line items
+- **GET** `/api/invoices/:id` - Get specific invoice with line items
+- **GET** `/api/invoices/stats` - Get invoice statistics
+
+### Query Parameters
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 50)
+
+### Statistics Available
+- Total invoices
+- Paid vs unpaid invoices
+- Total revenue
+- Outstanding balance
+
+---
+
+## 📋 Estimate Management
+
+### Estimate Operations
+- **GET** `/api/estimates` - List all estimates with line items
+- **GET** `/api/estimates/:id` - Get specific estimate with line items
+- **GET** `/api/estimates/stats` - Get estimate statistics
+
+### Query Parameters
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 50)
+
+---
+
+## 📅 Calendar & Scheduling
+
+### Calendar Events
+- **GET** `/api/calendar/events` - Get all calendar events
+- **GET** `/api/calendar/events/today` - Get today's events
+- **POST** `/api/calendar/sync` - Trigger Google Calendar sync
+
+### Query Parameters for Events
+- `start_date` - Filter events from date
+- `end_date` - Filter events to date
+- `calendar_id` - Filter by calendar ID
+- `include_assigned` - Include assigned events (default: false)
+
+### Work Assignments
+- **POST** `/api/assignments` - Assign work to employee
+- **PUT** `/api/assignments/:id` - Update work assignment
+- **DELETE** `/api/assignments/:id` - Remove work assignment
+- **GET** `/api/assignments/employee/:employeeId` - Get employee assignments
+- **GET** `/api/assignments/today` - Get today's assignments
+- **GET** `/api/work-queue` - Get unassigned work for today
+
+### Assignment Status Options
+- `assigned` - Work assigned but not started
+- `in_progress` - Work in progress
+- `completed` - Work completed
+- `cancelled` - Work cancelled
+
+---
+
+## 👷 Employee Management
+
+### Employee Operations
+- **GET** `/api/employees` - Get all employees
+- **GET** `/api/employees/working-today` - Get employees working today
+
+### Query Parameters
+- `active_only` - Show only active employees (default: false)
+
+### Employee Data Includes
+- Personal information
+- Work assignments
+- Availability status
+- Contact details
+
+---
+
+## 📝 Internal Notes
+
+### Note Operations
+- **GET** `/api/notes` - Get internal notes
+- **POST** `/api/notes` - Create new note
+- **PUT** `/api/notes/:id` - Update note
+- **DELETE** `/api/notes/:id` - Delete note
+
+### Query Parameters
+- `entity_type` - Filter by entity type
+- `entity_id` - Filter by entity ID
+- `category` - Filter by category
+- `pinned_only` - Show only pinned notes
+
+### Note Categories
+- `general` - General notes
+- `customer` - Customer-related notes
+- `work` - Work assignment notes
+- `system` - System notes
+
+---
+
+## ⏰ Time Clock
+
+### Clock Operations
+- **POST** `/api/clock/in` - Clock in
+- **POST** `/api/clock/out` - Clock out
+- **GET** `/api/clock/status` - Get current clock status
+- **GET** `/api/clock/entries` - Get clock entries
+
+### Clock Data Includes
+- Employee ID
+- Clock in/out times
+- Location information
+- IP address and user agent
+- Duration calculations
+
+### Query Parameters for Entries
+- `employee_id` - Filter by employee
+- `start_date` - Filter from date
+- `end_date` - Filter to date
+- `approved` - Filter by approval status
+
+---
+
+## 🔔 Webhooks
+
+### Webhook Endpoints
+- **POST** `/api/webhook/quickbooks` - QuickBooks webhook handler
+- **GET** `/api/webhook/health` - Webhook health check
+
+### Webhook Features
+- Signature verification
+- Event processing
+- Automatic data sync
+- Error handling
+
+---
+
+## 👤 User Management
+
+### User Operations
+- **GET** `/api/users` - Get all users
+- **GET** `/api/users/:id` - Get specific user
+- **POST** `/api/users` - Create new user
+- **PUT** `/api/users/:id` - Update user
+- **DELETE** `/api/users/:id` - Delete user
+
+### Authentication
+- **POST** `/api/auth/login` - User login
+- **POST** `/api/auth/register` - User registration
+- **POST** `/api/auth/logout` - User logout
+- **GET** `/api/auth/verify` - Verify token validity
+
+---
+
+## 📊 Response Format
+
+All API responses follow a consistent format:
+
+### Success Response
 ```json
 {
   "success": true,
-  "data": [
-    {
-      "id": 1,
-      "displayname": "John Doe",
-      "companyname": "Doe Company",
-      "primaryphone_freeformnumber": "+1-555-0123",
-      "primaryemailaddr_address": "john@doe.com",
-      "active": true,
-      "balance": 150.00,
-      "notes": "VIP customer",
-      "last_updated": "2025-10-06T00:00:00.000Z"
-    }
-  ],
+  "data": { ... },
+  "message": "Optional success message",
   "pagination": {
     "page": 1,
     "limit": 50,
@@ -89,453 +253,103 @@ GET /api/customers
 }
 ```
 
-### Get Customer by ID
-```http
-GET /api/customers/:id
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "displayname": "John Doe",
-    "companyname": "Doe Company",
-    "primaryphone_freeformnumber": "+1-555-0123",
-    "primaryemailaddr_address": "john@doe.com",
-    "active": true,
-    "balance": 150.00,
-    "notes": "VIP customer",
-    "last_updated": "2025-10-06T00:00:00.000Z"
-  }
-}
-```
-
-### Get Customer Statistics
-```http
-GET /api/customers/stats
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "total": 100,
-    "active": 85,
-    "inactive": 15
-  }
-}
-```
-
----
-
-## 🧾 Invoice Endpoints
-
-### Get All Invoices
-```http
-GET /api/invoices
-```
-**Query Parameters**:
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 50)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "docnumber": "INV-001",
-      "txndate": "2025-10-01T00:00:00.000Z",
-      "duedate": "2025-10-31T00:00:00.000Z",
-      "totalamt": 500.00,
-      "balance": 500.00,
-      "customerref_value": 1,
-      "customerref_name": "John Doe",
-      "emailstatus": "NotSet",
-      "printstatus": "NotSet",
-      "last_updated": "2025-10-06T00:00:00.000Z",
-      "customer": {
-        "id": 1,
-        "displayname": "John Doe"
-      },
-      "line_items": [
-        {
-          "id": 1,
-          "invoice_id": 1,
-          "line_num": 1,
-          "description": "Pest Control Service",
-          "amount": 500.00,
-          "qty": 1,
-          "unit_price": 500.00,
-          "item_ref_value": 1,
-          "item_ref_name": "Pest Control",
-          "service_date": "2025-10-01T00:00:00.000Z"
-        }
-      ]
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 50,
-    "total": 25,
-    "pages": 1
-  }
-}
-```
-
-### Get Invoice by ID
-```http
-GET /api/invoices/:id
-```
-**Response**: Same structure as single invoice in the list above
-
-### Get Invoice Statistics
-```http
-GET /api/invoices/stats
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "total": 25,
-    "paid": 15,
-    "unpaid": 10,
-    "totalRevenue": 12500.00,
-    "outstandingBalance": 5000.00
-  }
-}
-```
-
----
-
-## 📋 Estimate Endpoints
-
-### Get All Estimates
-```http
-GET /api/estimates
-```
-**Query Parameters**:
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 50)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "docnumber": "EST-001",
-      "txndate": "2025-10-01T00:00:00.000Z",
-      "duedate": "2025-10-31T00:00:00.000Z",
-      "expiration_date": "2025-11-30T00:00:00.000Z",
-      "totalamt": 750.00,
-      "balance": 750.00,
-      "status": "Draft",
-      "customerref_value": 1,
-      "customerref_name": "John Doe",
-      "emailstatus": "NotSet",
-      "printstatus": "NotSet",
-      "private_note": "Follow up in 2 weeks",
-      "last_updated": "2025-10-06T00:00:00.000Z",
-      "customer": {
-        "id": 1,
-        "displayname": "John Doe"
-      },
-      "line_items": [
-        {
-          "id": 1,
-          "estimate_id": 1,
-          "line_num": 1,
-          "description": "Termite Inspection",
-          "amount": 750.00,
-          "qty": 1,
-          "unit_price": 750.00,
-          "item_ref_value": 2,
-          "item_ref_name": "Termite Inspection",
-          "service_date": "2025-10-15T00:00:00.000Z"
-        }
-      ]
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 50,
-    "total": 12,
-    "pages": 1
-  }
-}
-```
-
-### Get Estimate by ID
-```http
-GET /api/estimates/:id
-```
-**Response**: Same structure as single estimate in the list above
-
-### Get Estimate Statistics
-```http
-GET /api/estimates/stats
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "total": 12,
-    "byStatus": {
-      "draft": 5,
-      "sent": 4,
-      "accepted": 2,
-      "declined": 1
-    }
-  }
-}
-```
-
----
-
-## 📦 Item Endpoints
-
-### Get All Items
-```http
-GET /api/items
-```
-**Query Parameters**:
-- `page` (optional): Page number (default: 1)
-- `limit` (optional): Items per page (default: 50)
-
-**Response**:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "fully_qualified_name": "Pest Control Service",
-      "sku": "PC-001",
-      "description": "Monthly pest control service",
-      "taxclassificationref_value": "TAX001",
-      "taxclassificationref_name": "Services",
-      "last_updated": "2025-10-06T00:00:00.000Z"
-    }
-  ],
-  "pagination": {
-    "page": 1,
-    "limit": 50,
-    "total": 8,
-    "pages": 1
-  }
-}
-```
-
-### Get Item by ID
-```http
-GET /api/items/:id
-```
-**Response**: Same structure as single item in the list above
-
-### Get Item Statistics
-```http
-GET /api/items/stats
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "total": 8
-  }
-}
-```
-
----
-
-## 🔄 Sync Endpoints
-
-### Trigger Manual Sync
-```http
-POST /api/sync
-```
-**Description**: Manually trigger QuickBooks data synchronization  
-**Response**:
-```json
-{
-  "success": true,
-  "message": "QuickBooks data synchronization initiated."
-}
-```
-
-### Get Sync Status
-```http
-GET /api/sync/status
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "lastSync": "2025-10-06T00:00:00.000Z",
-    "tokenStatus": {
-      "isValid": true,
-      "expiresAt": "2025-10-06T01:00:00.000Z"
-    },
-    "recordCounts": {
-      "customers": 100,
-      "invoices": 25,
-      "estimates": 12,
-      "items": 8
-    }
-  }
-}
-```
-
----
-
-## 🔑 Token Endpoints
-
-### Get Token Status
-```http
-GET /api/tokens/status
-```
-**Response**:
-```json
-{
-  "success": true,
-  "data": {
-    "isValid": true,
-    "expiresAt": "2025-10-06T01:00:00.000Z",
-    "realmId": "123456789",
-    "message": "QuickBooks token is valid."
-  }
-}
-```
-
----
-
-## 🔔 Webhook Endpoints
-
-### QuickBooks Webhook
-```http
-POST /api/webhook/quickbooks
-```
-**Description**: Receives QuickBooks webhook notifications  
-**Authentication**: None (uses signature verification)  
-**Headers**:
-- `Intuit-Signature`: HMAC-SHA256 signature
-- `Content-Type`: application/json
-
-**Request Body**:
-```json
-{
-  "eventNotifications": [
-    {
-      "realmId": "123456789",
-      "dataChangeEvent": {
-        "entities": [
-          {
-            "name": "Customer",
-            "id": "1",
-            "operation": "Update",
-            "lastUpdated": "2025-10-06T00:00:00.000Z"
-          }
-        ]
-      }
-    }
-  ]
-}
-```
-
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Webhook received and queued for processing",
-  "timestamp": "2025-10-06T00:00:00.000Z"
-}
-```
-
-### Webhook Health Check
-```http
-GET /api/webhook/health
-```
-**Description**: Check webhook endpoint health  
-**Authentication**: None required  
-**Response**:
-```json
-{
-  "success": true,
-  "message": "Webhook endpoint is healthy",
-  "timestamp": "2025-10-06T00:00:00.000Z",
-  "configured": true
-}
-```
-
----
-
-## 📊 Error Responses
-
-All endpoints return consistent error responses:
-
-### 400 Bad Request
+### Error Response
 ```json
 {
   "success": false,
-  "error": "Bad Request",
-  "message": "Invalid request parameters"
-}
-```
-
-### 401 Unauthorized
-```json
-{
-  "success": false,
-  "error": "Unauthorized",
-  "message": "Missing or invalid token"
-}
-```
-
-### 404 Not Found
-```json
-{
-  "success": false,
-  "error": "Not Found",
-  "message": "Resource not found"
-}
-```
-
-### 500 Internal Server Error
-```json
-{
-  "success": false,
-  "error": "Internal Server Error",
-  "message": "Something went wrong"
+  "error": "Error type",
+  "message": "Human-readable error message"
 }
 ```
 
 ---
 
-## 🔧 Rate Limiting
+## 🔒 Security Features
 
-- **Window**: 15 minutes
-- **Limit**: 100 requests per IP
-- **Headers**: Rate limit information included in response headers
+### Rate Limiting
+- 100 requests per 15 minutes per IP
+- Configurable via environment variables
+
+### CORS
+- Configurable origins
+- Credentials support
+- Preflight handling
+
+### Security Headers
+- Helmet.js security headers
+- Content Security Policy
+- XSS protection
+
+---
+
+## 📈 Monitoring & Debugging
+
+### Debug Endpoints
+- **GET** `/api/debug/health` - System health
+- **GET** `/api/debug/system` - System information
+- **GET** `/api/debug/database` - Database status
+- **GET** `/api/debug/quickbooks` - QuickBooks status
+- **GET** `/api/debug/logs` - Recent logs
+
+### Health Checks
+- Database connectivity
+- QuickBooks authentication
+- File system access
+- Memory usage
+- CPU usage
+
+---
+
+## 🚀 Deployment Endpoints
+
+### Production Health
+- **GET** `/health` - Basic health check
+- **GET** `/api/health` - Detailed health check
+- **GET** `/api/debug/health` - System diagnostics
+
+### Monitoring
+- Process monitoring
+- Resource usage
+- Error tracking
+- Performance metrics
 
 ---
 
 ## 📝 Notes
 
-1. **Pagination**: All list endpoints support pagination with `page` and `limit` parameters
-2. **Timestamps**: All timestamps are in ISO 8601 format (UTC)
-3. **IDs**: QuickBooks IDs are stored as bigint numbers
-4. **Relations**: Related data is included where applicable (e.g., customer info with invoices)
-5. **Webhooks**: Processed asynchronously for optimal performance
-6. **Authentication**: JWT tokens are verified using Stack Auth JWKS endpoint
+### Development vs Production
+- Development endpoints may have additional debug information
+- Production endpoints are optimized for performance
+- Authentication requirements may vary by environment
+
+### Rate Limits
+- Default: 100 requests per 15 minutes
+- Configurable via `RATE_LIMIT_MAX_REQUESTS` and `RATE_LIMIT_WINDOW_MS`
+- Applied to all `/api/` routes
+
+### Error Handling
+- All endpoints include comprehensive error handling
+- Errors are logged for debugging
+- User-friendly error messages
+- Proper HTTP status codes
 
 ---
 
-**Last Updated**: October 6, 2025  
-**API Version**: 2.0.0
+## 🔄 Data Synchronization
+
+### Automatic Sync
+- QuickBooks webhooks trigger automatic sync
+- Scheduled sync jobs (configurable)
+- Real-time data updates
+
+### Manual Sync
+- Full data synchronization
+- Entity-specific sync
+- Token refresh and validation
+- Sync status monitoring
+
+---
+
+**Last Updated:** 2025-10-15  
+**API Version:** 1.0.0  
+**Base URL:** `http://localhost:5000` (development) / `https://wemakemarin.com` (production)

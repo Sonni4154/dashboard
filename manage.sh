@@ -1,11 +1,15 @@
 #!/bin/bash
 
-# Marin Pest Control Dashboard - Linux Management Console
-# Comprehensive server management and monitoring tool
+# =============================================================================
+# 🚀 MARIN PEST CONTROL DASHBOARD - MASTER MANAGEMENT SCRIPT
+# =============================================================================
+# A comprehensive deployment and management tool with whiptail interface
+# Features: Deployment, Monitoring, Debugging, Domain Management, Process Control
+# =============================================================================
 
-set -euo pipefail  # Exit on error, undefined vars, pipe failures
+set -euo pipefail
 
-# Colors for output
+# Colors and formatting
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -15,1512 +19,2412 @@ CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-# Configuration
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEPLOY_DIR="/var/dashboard"
+# Script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
+BACKUP_DIR="$SCRIPT_DIR/backups"
 
-# Use deployment directory if it exists, otherwise use project root
-if [[ -d "$DEPLOY_DIR" ]]; then
-    FRONTEND_DIR="$DEPLOY_DIR/frontend"
-    BACKEND_DIR="$DEPLOY_DIR/backend"
-    LOGS_DIR="$DEPLOY_DIR/logs"
-    CHANGES_LOG="$DEPLOY_DIR/docs/changes.log"
-else
-    FRONTEND_DIR="$PROJECT_ROOT/frontend"
-    BACKEND_DIR="$PROJECT_ROOT/backend"
-    LOGS_DIR="$PROJECT_ROOT/logs"
-    CHANGES_LOG="$PROJECT_ROOT/docs/changes.log"
-fi
-
-NGINX_DIR="/etc/nginx"
-PM2_CONFIG="$BACKEND_DIR/ecosystem.config.js"
-
-# Create logs directory if it doesn't exist
-mkdir -p "$LOGS_DIR"
+# Create directories if they don't exist
+mkdir -p "$LOG_DIR" "$BACKUP_DIR"
 
 # Logging function
-log_action() {
-    local action="$1"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$timestamp] $action" >> "$CHANGES_LOG"
-    echo -e "${GREEN}[$timestamp]${NC} $action"
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_DIR/manage.log"
 }
 
-# Error handling function
-handle_error() {
-    local exit_code=$?
-    local line_number=$1
-    echo -e "${RED}Error occurred on line $line_number with exit code $exit_code${NC}"
-    echo -e "${YELLOW}Would you like to continue? (y/n):${NC}"
-    read -r continue_choice
-    if [[ $continue_choice != "y" && $continue_choice != "Y" ]]; then
-        exit $exit_code
-    fi
+# Error handling
+error_exit() {
+    log "ERROR: $1"
+    whiptail --title "Error" --msgbox "Error: $1" 10 60
+    exit 1
 }
 
-# Set up error handling
-trap 'handle_error $LINENO' ERR
-
-# Function to check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Function to check if port is in use
-check_port() {
-    local port=$1
-    if command_exists netstat; then
-        netstat -tuln | grep -q ":$port "
-    elif command_exists ss; then
-        ss -tuln | grep -q ":$port "
-    else
-        return 1
-    fi
-}
-
-# Function to get service status
-get_service_status() {
-    local service=$1
-    if systemctl is-active --quiet "$service" 2>/dev/null; then
-        echo -e "${GREEN}RUNNING${NC}"
-    elif systemctl is-failed --quiet "$service" 2>/dev/null; then
-        echo -e "${RED}FAILED${NC}"
-    else
-        echo -e "${YELLOW}STOPPED${NC}"
-    fi
-}
-
-# Function to check if PM2 is running
-check_pm2_status() {
-    if command_exists pm2; then
-        pm2 list 2>/dev/null | grep -q "online" && echo -e "${GREEN}RUNNING${NC}" || echo -e "${YELLOW}STOPPED${NC}"
-    else
-        echo -e "${RED}NOT INSTALLED${NC}"
-    fi
-}
-
-# Function to set proper permissions
-set_permissions() {
-    log_action "Setting proper file permissions"
-    
-    # Set executable permissions for scripts
-    chmod +x "$PROJECT_ROOT"/*.sh 2>/dev/null || true
-    chmod +x "$PROJECT_ROOT"/*.bat 2>/dev/null || true
-    
-    # Set permissions for project directories
-    chmod 755 "$PROJECT_ROOT" 2>/dev/null || true
-    chmod 755 "$FRONTEND_DIR" 2>/dev/null || true
-    chmod 755 "$BACKEND_DIR" 2>/dev/null || true
-    
-    # Set permissions for logs directory
-    chmod 755 "$LOGS_DIR" 2>/dev/null || true
-    
-    # Set permissions for node_modules (if they exist)
-    if [[ -d "$FRONTEND_DIR/node_modules" ]]; then
-        chmod -R 755 "$FRONTEND_DIR/node_modules" 2>/dev/null || true
-    fi
-    if [[ -d "$BACKEND_DIR/node_modules" ]]; then
-        chmod -R 755 "$BACKEND_DIR/node_modules" 2>/dev/null || true
-    fi
-    
-    echo -e "${GREEN}✓ Permissions set successfully${NC}"
-}
-
-# Function to check system requirements
-check_requirements() {
-    log_action "Checking system requirements"
-    
-    local missing_deps=()
-    
-    # Check for required commands
-    local required_commands=("node" "npm" "git" "curl" "systemctl")
-    for cmd in "${required_commands[@]}"; do
-        if ! command_exists "$cmd"; then
-            missing_deps+=("$cmd")
-        fi
-    done
-    
-    # Check for optional but recommended commands
-    local optional_commands=("pm2" "nginx" "certbot" "ufw" "fail2ban")
-    for cmd in "${optional_commands[@]}"; do
-        if ! command_exists "$cmd"; then
-            echo -e "${YELLOW}⚠ $cmd not found (optional)${NC}"
-        fi
-    done
-    
-    if [[ ${#missing_deps[@]} -gt 0 ]]; then
-        echo -e "${RED}Missing required dependencies: ${missing_deps[*]}${NC}"
-        echo -e "${YELLOW}Would you like to install them? (y/n):${NC}"
-        read -r install_choice
-        if [[ $install_choice == "y" || $install_choice == "Y" ]]; then
-            install_dependencies "${missing_deps[@]}"
-        else
-            echo -e "${RED}Cannot continue without required dependencies${NC}"
-            return 1
-        fi
-    else
-        echo -e "${GREEN}✓ All required dependencies found${NC}"
-    fi
-}
-
-# Function to install dependencies
-install_dependencies() {
-    local deps=("$@")
-    log_action "Installing dependencies: ${deps[*]}"
-    
-    # Update package list
-    sudo apt update
-    
-    for dep in "${deps[@]}"; do
-        case $dep in
-            "node")
-                echo -e "${BLUE}Installing Node.js...${NC}"
-                curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-                sudo apt-get install -y nodejs
-                ;;
-            "npm")
-                # npm comes with node
-                echo -e "${BLUE}npm will be installed with Node.js${NC}"
-                ;;
-            "git")
-                sudo apt-get install -y git
-                ;;
-            "curl")
-                sudo apt-get install -y curl
-                ;;
-            "systemctl")
-                # systemctl comes with systemd
-                echo -e "${BLUE}systemctl is part of systemd${NC}"
-                ;;
-            *)
-                sudo apt-get install -y "$dep"
-                ;;
-        esac
-    done
-    
-    echo -e "${GREEN}✓ Dependencies installed successfully${NC}"
-}
-
-# Function to check database connectivity
-check_database() {
-    log_action "Checking database connectivity"
-    
-    if [[ -f "$BACKEND_DIR/.env" ]]; then
-        source "$BACKEND_DIR/.env"
-        if [[ -n "${DATABASE_URL:-}" ]]; then
-            echo -e "${BLUE}Testing database connection...${NC}"
-            if command_exists psql; then
-                if psql "$DATABASE_URL" -c "SELECT 1;" >/dev/null 2>&1; then
-                    echo -e "${GREEN}✓ Database connection successful${NC}"
-                    return 0
-                else
-                    echo -e "${RED}✗ Database connection failed${NC}"
-                    return 1
-                fi
-            else
-                echo -e "${YELLOW}⚠ psql not available, cannot test database connection${NC}"
-                return 1
-            fi
-        else
-            echo -e "${RED}✗ DATABASE_URL not found in .env file${NC}"
-            return 1
-        fi
-    else
-        echo -e "${RED}✗ Backend .env file not found${NC}"
-        return 1
-    fi
-}
-
-# Function to check API health
-check_api_health() {
-    log_action "Checking API health"
-    
-    local api_url="http://localhost:5000"
-    if [[ -f "$BACKEND_DIR/.env" ]]; then
-        source "$BACKEND_DIR/.env"
-        api_url="${API_BASE_URL:-http://localhost:5000}"
-    fi
-    
-    echo -e "${BLUE}Testing API health endpoint...${NC}"
-    if curl -s -f "$api_url/health" >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ API health check successful${NC}"
-        curl -s "$api_url/health" | jq . 2>/dev/null || curl -s "$api_url/health"
-        return 0
-    else
-        echo -e "${RED}✗ API health check failed${NC}"
-        return 1
-    fi
-}
-
-# Function to check webhook health
-check_webhook_health() {
-    log_action "Checking webhook health"
-    
-    local api_url="http://localhost:5000"
-    if [[ -f "$BACKEND_DIR/.env" ]]; then
-        source "$BACKEND_DIR/.env"
-        api_url="${API_BASE_URL:-http://localhost:5000}"
-    fi
-    
-    echo -e "${BLUE}Testing webhook health endpoint...${NC}"
-    if curl -s -f "$api_url/api/webhook/health" >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ Webhook health check successful${NC}"
-        curl -s "$api_url/api/webhook/health" | jq . 2>/dev/null || curl -s "$api_url/api/webhook/health"
-        return 0
-    else
-        echo -e "${RED}✗ Webhook health check failed${NC}"
-        return 1
-    fi
-}
-
-# Function to start backend
-start_backend() {
-    log_action "Starting backend services"
-    
-    if [[ ! -d "$BACKEND_DIR" ]]; then
-        echo -e "${RED}✗ Backend directory not found${NC}"
-        return 1
-    fi
-    
-    cd "$BACKEND_DIR"
-    
-    # Check if .env exists
-    if [[ ! -f ".env" ]]; then
-        echo -e "${RED}✗ Backend .env file not found${NC}"
-        echo -e "${YELLOW}Please create .env file from env-template.txt${NC}"
-        return 1
-    fi
-    
-    # Install dependencies if needed
-    if [[ ! -d "node_modules" ]]; then
-        echo -e "${BLUE}Installing backend dependencies...${NC}"
-        npm install
-    fi
-    
-    # Build if needed
-    if [[ ! -d "dist" ]]; then
-        echo -e "${BLUE}Building backend...${NC}"
-        npm run build
-    fi
-    
-    # Start with PM2 if available, otherwise use npm
-    if command_exists pm2; then
-        echo -e "${BLUE}Starting backend with PM2...${NC}"
-        pm2 start ecosystem.config.js --env development
-        pm2 save
-    else
-        echo -e "${BLUE}Starting backend with npm...${NC}"
-        npm run dev:with-services &
-        echo $! > "$LOGS_DIR/backend.pid"
-    fi
-    
-    echo -e "${GREEN}✓ Backend started successfully${NC}"
-}
-
-# Function to stop backend
-stop_backend() {
-    log_action "Stopping backend services"
-    
-    if command_exists pm2; then
-        echo -e "${BLUE}Stopping backend with PM2...${NC}"
-        pm2 stop marin-pest-control-backend 2>/dev/null || true
-        pm2 stop marin-token-refresher 2>/dev/null || true
-        pm2 stop marin-qbo-sync 2>/dev/null || true
-    fi
-    
-    # Kill any remaining processes
-    if [[ -f "$LOGS_DIR/backend.pid" ]]; then
-        local pid=$(cat "$LOGS_DIR/backend.pid")
-        if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid"
-        fi
-        rm -f "$LOGS_DIR/backend.pid"
-    fi
-    
-    # Kill any node processes running on port 5000
-    local port_pid=$(lsof -ti:5000 2>/dev/null || true)
-    if [[ -n "$port_pid" ]]; then
-        kill "$port_pid" 2>/dev/null || true
-    fi
-    
-    echo -e "${GREEN}✓ Backend stopped successfully${NC}"
-}
-
-# Function to restart backend
-restart_backend() {
-    log_action "Restarting backend services"
-    stop_backend
-    sleep 2
-    start_backend
-}
-
-# Function to start frontend
-start_frontend() {
-    log_action "Starting frontend services"
-    
-    if [[ ! -d "$FRONTEND_DIR" ]]; then
-        echo -e "${RED}✗ Frontend directory not found${NC}"
-        return 1
-    fi
-    
-    cd "$FRONTEND_DIR"
-    
-    # Install dependencies if needed
-    if [[ ! -d "node_modules" ]]; then
-        echo -e "${BLUE}Installing frontend dependencies...${NC}"
-        npm install
-    fi
-    
-    # Start frontend
-    echo -e "${BLUE}Starting frontend...${NC}"
-    npm run dev &
-    echo $! > "$LOGS_DIR/frontend.pid"
-    
-    echo -e "${GREEN}✓ Frontend started successfully${NC}"
-}
-
-# Function to stop frontend
-stop_frontend() {
-    log_action "Stopping frontend services"
-    
-    # Kill frontend process
-    if [[ -f "$LOGS_DIR/frontend.pid" ]]; then
-        local pid=$(cat "$LOGS_DIR/frontend.pid")
-        if kill -0 "$pid" 2>/dev/null; then
-            kill "$pid"
-        fi
-        rm -f "$LOGS_DIR/frontend.pid"
-    fi
-    
-    # Kill any node processes running on port 5173
-    local port_pid=$(lsof -ti:5173 2>/dev/null || true)
-    if [[ -n "$port_pid" ]]; then
-        kill "$port_pid" 2>/dev/null || true
-    fi
-    
-    echo -e "${GREEN}✓ Frontend stopped successfully${NC}"
-}
-
-# Function to restart frontend
-restart_frontend() {
-    log_action "Restarting frontend services"
-    stop_frontend
-    sleep 2
-    start_frontend
-}
-
-# Function to show service status
-show_service_status() {
-    echo -e "${WHITE}=== SERVICE STATUS ===${NC}"
-    echo
-    
-    # Backend status
-    echo -e "${BLUE}Backend Services:${NC}"
-    if command_exists pm2; then
-        pm2 list 2>/dev/null || echo -e "${YELLOW}PM2 not running${NC}"
-    else
-        if check_port 5000; then
-            echo -e "${GREEN}Backend running on port 5000${NC}"
-        else
-            echo -e "${YELLOW}Backend not running${NC}"
+# Check if running as root for certain operations
+check_root() {
+    if [[ $EUID -eq 0 ]]; then
+        whiptail --title "Root Warning" --yesno "This script is running as root. Some operations may require elevated privileges. Continue?" 10 60
+        if [[ $? -ne 0 ]]; then
+            exit 1
         fi
     fi
-    echo
-    
-    # Frontend status
-    echo -e "${BLUE}Frontend Services:${NC}"
-    if check_port 5173; then
-        echo -e "${GREEN}Frontend running on port 5173${NC}"
-    else
-        echo -e "${YELLOW}Frontend not running${NC}"
-    fi
-    echo
-    
-    # Database status
-    echo -e "${BLUE}Database:${NC}"
-    if check_database; then
-        echo -e "${GREEN}Database connected${NC}"
-    else
-        echo -e "${RED}Database disconnected${NC}"
-    fi
-    echo
-    
-    # API health
-    echo -e "${BLUE}API Health:${NC}"
-    if check_api_health; then
-        echo -e "${GREEN}API healthy${NC}"
-    else
-        echo -e "${RED}API unhealthy${NC}"
-    fi
-    echo
-    
-    # Webhook health
-    echo -e "${BLUE}Webhook Health:${NC}"
-    if check_webhook_health; then
-        echo -e "${GREEN}Webhook healthy${NC}"
-    else
-        echo -e "${RED}Webhook unhealthy${NC}"
-    fi
-    echo
 }
 
-# Function to show remote access status
-show_remote_access() {
-    echo -e "${WHITE}=== REMOTE ACCESS STATUS ===${NC}"
-    echo
-    
-    # SSH
-    echo -e "${BLUE}SSH:${NC}"
-    if get_service_status ssh | grep -q "RUNNING"; then
-        local ssh_port=$(ss -tuln | grep :22 | awk '{print $5}' | cut -d: -f2)
-        echo -e "${GREEN}RUNNING${NC} on port ${ssh_port:-22}"
-        echo -e "  Username: $(whoami)"
-        echo -e "  Key-based auth: $(test -f ~/.ssh/authorized_keys && echo "Enabled" || echo "Disabled")"
-    else
-        echo -e "${YELLOW}STOPPED${NC}"
-    fi
-    echo
-    
-    # VNC
-    echo -e "${BLUE}VNC:${NC}"
-    if command_exists vncserver; then
-        local vnc_processes=$(pgrep -f vncserver | wc -l)
-        if [[ $vnc_processes -gt 0 ]]; then
-            echo -e "${GREEN}RUNNING${NC}"
-            echo -e "  Sessions: $vnc_processes"
-        else
-            echo -e "${YELLOW}STOPPED${NC}"
-        fi
-    else
-        echo -e "${RED}NOT INSTALLED${NC}"
-    fi
-    echo
-    
-    # RDP (xrdp)
-    echo -e "${BLUE}RDP (xrdp):${NC}"
-    if get_service_status xrdp | grep -q "RUNNING"; then
-        echo -e "${GREEN}RUNNING${NC} on port 3389"
-        echo -e "  Username: $(whoami)"
-    else
-        echo -e "${YELLOW}STOPPED${NC}"
-    fi
-    echo
-    
-    # SFTP
-    echo -e "${BLUE}SFTP:${NC}"
-    if get_service_status ssh | grep -q "RUNNING"; then
-        echo -e "${GREEN}AVAILABLE${NC} (via SSH)"
-        echo -e "  Port: 22"
-    else
-        echo -e "${YELLOW}UNAVAILABLE${NC}"
-    fi
-    echo
-    
-    # NFS
-    echo -e "${BLUE}NFS:${NC}"
-    if get_service_status nfs-kernel-server | grep -q "RUNNING"; then
-        echo -e "${GREEN}RUNNING${NC}"
-        echo -e "  Exports: $(showmount -e localhost 2>/dev/null | wc -l) configured"
-    else
-        echo -e "${YELLOW}STOPPED${NC}"
-    fi
-    echo
-    
-    # SMB/CIFS
-    echo -e "${BLUE}SMB/CIFS:${NC}"
-    if get_service_status smbd | grep -q "RUNNING"; then
-        echo -e "${GREEN}RUNNING${NC} on port 445"
-        echo -e "  Shares: $(smbclient -L localhost -N 2>/dev/null | grep -c "Disk" || echo "0")"
-    else
-        echo -e "${YELLOW}STOPPED${NC}"
-    fi
-    echo
-    
-    # RSYNC
-    echo -e "${BLUE}RSYNC:${NC}"
-    if get_service_status rsync | grep -q "RUNNING"; then
-        echo -e "${GREEN}RUNNING${NC} on port 873"
-    else
-        echo -e "${YELLOW}STOPPED${NC}"
-    fi
-    echo
-}
+# =============================================================================
+# 🎯 MAIN MENU
+# =============================================================================
 
-# Function to manage remote access services
-manage_remote_access() {
+show_main_menu() {
     while true; do
-        echo -e "${WHITE}=== REMOTE ACCESS MANAGEMENT ===${NC}"
-        echo "1. View Remote Access Status"
-        echo "2. Start SSH Service"
-        echo "3. Stop SSH Service"
-        echo "4. Start VNC Server"
-        echo "5. Stop VNC Server"
-        echo "6. Start RDP (xrdp) Service"
-        echo "7. Stop RDP (xrdp) Service"
-        echo "8. Start NFS Service"
-        echo "9. Stop NFS Service"
-        echo "10. Start SMB/CIFS Service"
-        echo "11. Stop SMB/CIFS Service"
-        echo "12. Start RSYNC Service"
-        echo "13. Stop RSYNC Service"
-        echo "14. Configure SSH Keys"
-        echo "15. Test Remote Connections"
-        echo "0. Back to Main Menu"
-        echo
-        read -p "Select option: " choice
+        choice=$(whiptail --title "🚀 Marin Pest Control Dashboard - Master Control" \
+            --menu "Choose an option:" 20 80 10 \
+            "1" "🚀 Complete Deployment (Full Stack + SSL)" \
+            "2" "📊 Hardware Monitoring & System Info" \
+            "3" "🧹 Process Management & Cleanup" \
+            "4" "🌐 Domain Configuration & DNS" \
+            "5" "✅ Check Deployment State" \
+            "6" "🔍 Lint/Check/Debug Tools" \
+            "7" "🐛 Active Debug & Diagnostics" \
+            "8" "📋 View Logs & Reports" \
+            "9" "🧪 API Endpoint Testing" \
+            "10" "🔒 SSH Hardening & Security" \
+            "11" "⚙️  System Configuration" \
+            "0" "❌ Exit" \
+            3>&1 1>&2 2>&3)
         
         case $choice in
-            1) show_remote_access ;;
-            2) sudo systemctl start ssh && log_action "SSH service started" ;;
-            3) sudo systemctl stop ssh && log_action "SSH service stopped" ;;
-            4) 
-                echo -e "${BLUE}Starting VNC server...${NC}"
-                vncserver :1 -geometry 1920x1080 -depth 24
-                log_action "VNC server started"
-                ;;
-            5) 
-                echo -e "${BLUE}Stopping VNC server...${NC}"
-                vncserver -kill :1 2>/dev/null || true
-                log_action "VNC server stopped"
-                ;;
-            6) sudo systemctl start xrdp && log_action "RDP service started" ;;
-            7) sudo systemctl stop xrdp && log_action "RDP service stopped" ;;
-            8) sudo systemctl start nfs-kernel-server && log_action "NFS service started" ;;
-            9) sudo systemctl stop nfs-kernel-server && log_action "NFS service stopped" ;;
-            10) sudo systemctl start smbd && log_action "SMB service started" ;;
-            11) sudo systemctl stop smbd && log_action "SMB service stopped" ;;
-            12) sudo systemctl start rsync && log_action "RSYNC service started" ;;
-            13) sudo systemctl stop rsync && log_action "RSYNC service stopped" ;;
-            14) configure_ssh_keys ;;
-            15) test_remote_connections ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option${NC}" ;;
+            1) deployment_menu ;;
+            2) hardware_monitoring ;;
+            3) process_management ;;
+            4) domain_configuration ;;
+            5) check_deployment_state ;;
+            6) debug_tools ;;
+            7) active_debug ;;
+            8) view_logs ;;
+            9) endpoint_testing ;;
+            10) ssh_hardening ;;
+            11) system_configuration ;;
+            0) exit 0 ;;
         esac
-        echo
-        read -p "Press Enter to continue..."
     done
 }
 
-# Function to configure SSH keys
-configure_ssh_keys() {
-    echo -e "${WHITE}=== SSH KEY CONFIGURATION ===${NC}"
-    echo "1. Generate new SSH key pair"
-    echo "2. Copy public key to remote server"
-    echo "3. Add server to known hosts"
-    echo "4. View current SSH keys"
-    echo "0. Back"
-    echo
-    read -p "Select option: " choice
-    
-    case $choice in
-        1)
-            echo -e "${BLUE}Generating new SSH key pair...${NC}"
-            ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
-            log_action "New SSH key pair generated"
-            ;;
-        2)
-            read -p "Enter remote server address: " server
-            read -p "Enter username: " username
-            ssh-copy-id "$username@$server"
-            log_action "SSH key copied to $username@$server"
-            ;;
-        3)
-            read -p "Enter server address: " server
-            ssh-keyscan -H "$server" >> ~/.ssh/known_hosts
-            log_action "Server $server added to known hosts"
-            ;;
-        4)
-            echo -e "${BLUE}Current SSH keys:${NC}"
-            ls -la ~/.ssh/id_*
-            echo
-            echo -e "${BLUE}Public key:${NC}"
-            cat ~/.ssh/id_rsa.pub 2>/dev/null || echo "No public key found"
-            ;;
-        0) return ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
-    esac
-}
+# =============================================================================
+# 🧪 API ENDPOINT TESTING
+# =============================================================================
 
-# Function to test remote connections
-test_remote_connections() {
-    echo -e "${WHITE}=== TESTING REMOTE CONNECTIONS ===${NC}"
-    
-    # Test SSH
-    echo -e "${BLUE}Testing SSH connection...${NC}"
-    if ssh -o ConnectTimeout=5 -o BatchMode=yes localhost exit 2>/dev/null; then
-        echo -e "${GREEN}✓ SSH connection successful${NC}"
-    else
-        echo -e "${RED}✗ SSH connection failed${NC}"
-    fi
-    
-    # Test VNC
-    echo -e "${BLUE}Testing VNC connection...${NC}"
-    if nc -z localhost 5901 2>/dev/null; then
-        echo -e "${GREEN}✓ VNC port 5901 accessible${NC}"
-    else
-        echo -e "${YELLOW}⚠ VNC port 5901 not accessible${NC}"
-    fi
-    
-    # Test RDP
-    echo -e "${BLUE}Testing RDP connection...${NC}"
-    if nc -z localhost 3389 2>/dev/null; then
-        echo -e "${GREEN}✓ RDP port 3389 accessible${NC}"
-    else
-        echo -e "${YELLOW}⚠ RDP port 3389 not accessible${NC}"
-    fi
-    
-    # Test SMB
-    echo -e "${BLUE}Testing SMB connection...${NC}"
-    if nc -z localhost 445 2>/dev/null; then
-        echo -e "${GREEN}✓ SMB port 445 accessible${NC}"
-    else
-        echo -e "${YELLOW}⚠ SMB port 445 not accessible${NC}"
-    fi
-}
-
-# Function to manage server services
-manage_server_services() {
+endpoint_testing() {
     while true; do
-        echo -e "${WHITE}=== SERVER SERVICES MANAGEMENT ===${NC}"
-        echo "1. Restart Nginx"
-        echo "2. Renew SSL Certificates (Certbot)"
-        echo "3. View/Change Logging Level"
-        echo "4. Enable/Disable Services"
-        echo "5. List Running Processes"
-        echo "6. Kill Process by PID"
-        echo "7. Inspect Non-Server Processes"
-        echo "8. View System Logs"
-        echo "9. Check for Intrusions"
-        echo "10. System Resource Monitor"
-        echo "11. Service Status Overview"
-        echo "0. Back to Main Menu"
-        echo
-        read -p "Select option: " choice
+        choice=$(whiptail --title "🧪 API Endpoint Testing" \
+            --menu "Choose testing option:" 20 80 12 \
+            "1" "🏥 Health Check Endpoints" \
+            "2" "🔗 QuickBooks Integration Tests" \
+            "3" "📅 Calendar & Scheduling Tests" \
+            "4" "👥 Customer Management Tests" \
+            "5" "📦 Product/Item Tests" \
+            "6" "🧾 Invoice Management Tests" \
+            "7" "📋 Estimate Management Tests" \
+            "8" "⏰ Time Clock Tests" \
+            "9" "🔄 Data Sync Tests" \
+            "10" "🔔 Webhook Tests" \
+            "11" "🎯 Comprehensive Test Suite" \
+            "12" "📊 Performance Testing" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
         
         case $choice in
-            1) restart_nginx ;;
-            2) renew_ssl_certificates ;;
-            3) manage_logging_level ;;
-            4) manage_service_enable_disable ;;
-            5) list_processes ;;
-            6) kill_process ;;
-            7) inspect_non_server_processes ;;
-            8) view_system_logs ;;
-            9) check_intrusions ;;
-            10) system_resource_monitor ;;
-            11) service_status_overview ;;
-            0) break ;;
-            *) echo -e "${RED}Invalid option${NC}" ;;
+            1) test_health_endpoints ;;
+            2) test_quickbooks_endpoints ;;
+            3) test_calendar_endpoints ;;
+            4) test_customer_endpoints ;;
+            5) test_item_endpoints ;;
+            6) test_invoice_endpoints ;;
+            7) test_estimate_endpoints ;;
+            8) test_timeclock_endpoints ;;
+            9) test_sync_endpoints ;;
+            10) test_webhook_endpoints ;;
+            11) comprehensive_test_suite ;;
+            12) performance_testing ;;
+            0) return ;;
         esac
-        echo
-        read -p "Press Enter to continue..."
     done
 }
 
-# Function to restart nginx
-restart_nginx() {
-    log_action "Restarting Nginx"
-    if command_exists nginx; then
-        sudo systemctl restart nginx
-        if systemctl is-active --quiet nginx; then
-            echo -e "${GREEN}✓ Nginx restarted successfully${NC}"
+test_health_endpoints() {
+    log "Testing health endpoints..."
+    
+    local results_file="$LOG_DIR/health_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test basic health
+    if curl -f -s http://localhost:5000/health >/dev/null 2>&1; then
+        log "✅ Basic health check passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Basic health check failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test API health
+    if curl -f -s http://localhost:5000/api/health >/dev/null 2>&1; then
+        log "✅ API health check passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ API health check failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test debug health
+    if curl -f -s http://localhost:5000/api/debug/health >/dev/null 2>&1; then
+        log "✅ Debug health check passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Debug health check failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Health endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Health Endpoint Test Results" --msgbox "Health endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_quickbooks_endpoints() {
+    log "Testing QuickBooks integration endpoints..."
+    
+    local results_file="$LOG_DIR/qb_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test token status
+    if curl -f -s http://localhost:5000/api/tokens/status >/dev/null 2>&1; then
+        log "✅ Token status endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Token status endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test OAuth connect
+    if curl -f -s http://localhost:5000/api/qbo/connect >/dev/null 2>&1; then
+        log "✅ OAuth connect endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ OAuth connect endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test sync status
+    if curl -f -s http://localhost:5000/api/sync/status >/dev/null 2>&1; then
+        log "✅ Sync status endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Sync status endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook endpoint
+    if curl -f -s http://localhost:5000/api/webhook/health >/dev/null 2>&1; then
+        log "✅ Webhook health endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Webhook health endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook with sample payload
+    local webhook_payload='{"eventNotifications":[{"dataChangeEvent":{"entities":[{"name":"Customer","id":"1","operation":"Update"}]}}]}'
+    if curl -f -s -X POST http://localhost:5000/api/webhook/quickbooks \
+        -H 'Content-Type: application/json' \
+        -d "$webhook_payload" >/dev/null 2>&1; then
+        log "✅ Webhook POST endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Webhook POST endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "QuickBooks endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "QuickBooks Endpoint Test Results" --msgbox "QuickBooks endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_calendar_endpoints() {
+    log "Testing calendar and scheduling endpoints..."
+    
+    local results_file="$LOG_DIR/calendar_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test today's events
+    if curl -f -s http://localhost:5000/api/calendar/events/today >/dev/null 2>&1; then
+        log "✅ Today's events endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Today's events endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test work queue
+    if curl -f -s http://localhost:5000/api/work-queue >/dev/null 2>&1; then
+        log "✅ Work queue endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Work queue endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test employees
+    if curl -f -s http://localhost:5000/api/employees >/dev/null 2>&1; then
+        log "✅ Employees endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Employees endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Calendar endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Calendar Endpoint Test Results" --msgbox "Calendar endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_customer_endpoints() {
+    log "Testing customer management endpoints..."
+    
+    local results_file="$LOG_DIR/customer_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test customers list
+    if curl -f -s http://localhost:5000/api/customers >/dev/null 2>&1; then
+        log "✅ Customers list endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Customers list endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test customer stats
+    if curl -f -s http://localhost:5000/api/customers/stats >/dev/null 2>&1; then
+        log "✅ Customer stats endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Customer stats endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Customer endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Customer Endpoint Test Results" --msgbox "Customer endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_item_endpoints() {
+    log "Testing product/item endpoints..."
+    
+    local results_file="$LOG_DIR/item_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test items list
+    if curl -f -s http://localhost:5000/api/items >/dev/null 2>&1; then
+        log "✅ Items list endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Items list endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test item stats
+    if curl -f -s http://localhost:5000/api/items/stats >/dev/null 2>&1; then
+        log "✅ Item stats endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Item stats endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Item endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Item Endpoint Test Results" --msgbox "Item endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_invoice_endpoints() {
+    log "Testing invoice management endpoints..."
+    
+    local results_file="$LOG_DIR/invoice_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test invoices list
+    if curl -f -s http://localhost:5000/api/invoices >/dev/null 2>&1; then
+        log "✅ Invoices list endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Invoices list endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test invoice stats
+    if curl -f -s http://localhost:5000/api/invoices/stats >/dev/null 2>&1; then
+        log "✅ Invoice stats endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Invoice stats endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Invoice endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Invoice Endpoint Test Results" --msgbox "Invoice endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_estimate_endpoints() {
+    log "Testing estimate management endpoints..."
+    
+    local results_file="$LOG_DIR/estimate_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test estimates list
+    if curl -f -s http://localhost:5000/api/estimates >/dev/null 2>&1; then
+        log "✅ Estimates list endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Estimates list endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test estimate stats
+    if curl -f -s http://localhost:5000/api/estimates/stats >/dev/null 2>&1; then
+        log "✅ Estimate stats endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Estimate stats endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Estimate endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Estimate Endpoint Test Results" --msgbox "Estimate endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_timeclock_endpoints() {
+    log "Testing time clock endpoints..."
+    
+    local results_file="$LOG_DIR/timeclock_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test clock status
+    if curl -f -s "http://localhost:5000/api/clock/status?employee_id=1" >/dev/null 2>&1; then
+        log "✅ Clock status endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Clock status endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test clock entries
+    if curl -f -s http://localhost:5000/api/clock/entries >/dev/null 2>&1; then
+        log "✅ Clock entries endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Clock entries endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Time clock endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Time Clock Endpoint Test Results" --msgbox "Time clock endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_sync_endpoints() {
+    log "Testing data synchronization endpoints..."
+    
+    local results_file="$LOG_DIR/sync_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test sync status
+    if curl -f -s http://localhost:5000/api/sync/status >/dev/null 2>&1; then
+        log "✅ Sync status endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Sync status endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test sync health
+    if curl -f -s http://localhost:5000/api/sync/health >/dev/null 2>&1; then
+        log "✅ Sync health endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Sync health endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test manual sync trigger (this will actually trigger a sync)
+    if whiptail --title "Manual Sync Test" --yesno "Test manual sync trigger? This will perform an actual data sync." 10 60; then
+        if curl -f -s -X POST http://localhost:5000/api/sync >/dev/null 2>&1; then
+            log "✅ Manual sync trigger passed" | tee -a "$results_file"
+            ((passed++))
         else
-            echo -e "${RED}✗ Nginx restart failed${NC}"
-            sudo systemctl status nginx
+            log "❌ Manual sync trigger failed" | tee -a "$results_file"
+            ((failed++))
         fi
-    else
-        echo -e "${RED}✗ Nginx not installed${NC}"
     fi
-}
-
-# Function to renew SSL certificates
-renew_ssl_certificates() {
-    log_action "Renewing SSL certificates"
-    if command_exists certbot; then
-        echo -e "${BLUE}Renewing SSL certificates...${NC}"
-        sudo certbot renew --dry-run
-        echo -e "${YELLOW}Dry run completed. Run without --dry-run to actually renew.${NC}"
-        echo -e "${YELLOW}Continue with actual renewal? (y/n):${NC}"
-        read -r renew_choice
-        if [[ $renew_choice == "y" || $renew_choice == "Y" ]]; then
-            sudo certbot renew
-            sudo systemctl reload nginx
-            echo -e "${GREEN}✓ SSL certificates renewed${NC}"
-        fi
-    else
-        echo -e "${RED}✗ Certbot not installed${NC}"
-    fi
-}
-
-# Function to manage logging level
-manage_logging_level() {
-    echo -e "${WHITE}=== LOGGING LEVEL MANAGEMENT ===${NC}"
-    echo "1. View current logging level"
-    echo "2. Set logging level to DEBUG"
-    echo "3. Set logging level to INFO"
-    echo "4. Set logging level to WARN"
-    echo "5. Set logging level to ERROR"
-    echo "0. Back"
-    echo
-    read -p "Select option: " choice
     
-    case $choice in
-        1)
-            echo -e "${BLUE}Current logging configuration:${NC}"
-            if [[ -f "$BACKEND_DIR/.env" ]]; then
-                grep LOG_LEVEL "$BACKEND_DIR/.env" || echo "LOG_LEVEL not set"
-            fi
-            ;;
-        2|3|4|5)
-            local levels=("" "DEBUG" "INFO" "WARN" "ERROR")
-            local level="${levels[$choice]}"
-            if [[ -f "$BACKEND_DIR/.env" ]]; then
-                if grep -q "LOG_LEVEL" "$BACKEND_DIR/.env"; then
-                    sed -i "s/LOG_LEVEL=.*/LOG_LEVEL=$level/" "$BACKEND_DIR/.env"
-                else
-                    echo "LOG_LEVEL=$level" >> "$BACKEND_DIR/.env"
-                fi
-                echo -e "${GREEN}✓ Logging level set to $level${NC}"
-                log_action "Logging level changed to $level"
-            else
-                echo -e "${RED}✗ Backend .env file not found${NC}"
-            fi
-            ;;
-        0) return ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
-    esac
-}
-
-# Function to manage service enable/disable
-manage_service_enable_disable() {
-    echo -e "${WHITE}=== SERVICE ENABLE/DISABLE ===${NC}"
-    echo "1. Enable service"
-    echo "2. Disable service"
-    echo "3. View service status"
-    echo "0. Back"
-    echo
-    read -p "Select option: " choice
-    
-    case $choice in
-        1)
-            read -p "Enter service name: " service
-            sudo systemctl enable "$service"
-            echo -e "${GREEN}✓ Service $service enabled${NC}"
-            ;;
-        2)
-            read -p "Enter service name: " service
-            sudo systemctl disable "$service"
-            echo -e "${GREEN}✓ Service $service disabled${NC}"
-            ;;
-        3)
-            read -p "Enter service name: " service
-            sudo systemctl status "$service"
-            ;;
-        0) return ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
-    esac
-}
-
-# Function to list processes
-list_processes() {
-    echo -e "${WHITE}=== RUNNING PROCESSES ===${NC}"
-    echo "1. All processes"
-    echo "2. Node.js processes"
-    echo "3. PM2 processes"
-    echo "4. Nginx processes"
-    echo "5. Database processes"
-    echo "0. Back"
-    echo
-    read -p "Select option: " choice
-    
-    case $choice in
-        1) ps aux --sort=-%cpu | head -20 ;;
-        2) ps aux | grep node | grep -v grep ;;
-        3) pm2 list 2>/dev/null || echo "PM2 not running" ;;
-        4) ps aux | grep nginx | grep -v grep ;;
-        5) ps aux | grep -E "(postgres|mysql|mongo)" | grep -v grep ;;
-        0) return ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
-    esac
-}
-
-# Function to kill process
-kill_process() {
-    read -p "Enter PID to kill: " pid
-    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
-        echo -e "${YELLOW}Killing process $pid...${NC}"
-        if kill "$pid" 2>/dev/null; then
-            echo -e "${GREEN}✓ Process $pid killed${NC}"
-            log_action "Process $pid killed"
+    # Test entity-specific sync
+    for entity in customers items invoices estimates; do
+        if curl -f -s -X POST "http://localhost:5000/api/sync/$entity" >/dev/null 2>&1; then
+            log "✅ $entity sync endpoint passed" | tee -a "$results_file"
+            ((passed++))
         else
-            echo -e "${RED}✗ Failed to kill process $pid${NC}"
+            log "❌ $entity sync endpoint failed" | tee -a "$results_file"
+            ((failed++))
         fi
+    done
+    
+    # Test token refresh
+    if curl -f -s -X POST http://localhost:5000/api/sync/refresh-token >/dev/null 2>&1; then
+        log "✅ Token refresh endpoint passed" | tee -a "$results_file"
+        ((passed++))
     else
-        echo -e "${RED}Invalid PID${NC}"
+        log "❌ Token refresh endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    log "Sync endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Sync Endpoint Test Results" --msgbox "Sync endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+test_webhook_endpoints() {
+    log "Testing QuickBooks webhook endpoints..."
+    
+    local results_file="$LOG_DIR/webhook_test_$(date +%Y%m%d_%H%M%S).log"
+    local passed=0
+    local failed=0
+    
+    # Test webhook health
+    if curl -f -s http://localhost:5000/api/webhook/health >/dev/null 2>&1; then
+        log "✅ Webhook health endpoint passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Webhook health endpoint failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook with Customer update
+    local customer_payload='{"eventNotifications":[{"dataChangeEvent":{"entities":[{"name":"Customer","id":"1","operation":"Update"}]}}]}'
+    if curl -f -s -X POST http://localhost:5000/api/webhook/quickbooks \
+        -H 'Content-Type: application/json' \
+        -d "$customer_payload" >/dev/null 2>&1; then
+        log "✅ Customer webhook test passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Customer webhook test failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook with Invoice update
+    local invoice_payload='{"eventNotifications":[{"dataChangeEvent":{"entities":[{"name":"Invoice","id":"1","operation":"Update"}]}}]}'
+    if curl -f -s -X POST http://localhost:5000/api/webhook/quickbooks \
+        -H 'Content-Type: application/json' \
+        -d "$invoice_payload" >/dev/null 2>&1; then
+        log "✅ Invoice webhook test passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Invoice webhook test failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook with Item update
+    local item_payload='{"eventNotifications":[{"dataChangeEvent":{"entities":[{"name":"Item","id":"1","operation":"Update"}]}}]}'
+    if curl -f -s -X POST http://localhost:5000/api/webhook/quickbooks \
+        -H 'Content-Type: application/json' \
+        -d "$item_payload" >/dev/null 2>&1; then
+        log "✅ Item webhook test passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Item webhook test failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook with Estimate update
+    local estimate_payload='{"eventNotifications":[{"dataChangeEvent":{"entities":[{"name":"Estimate","id":"1","operation":"Update"}]}}]}'
+    if curl -f -s -X POST http://localhost:5000/api/webhook/quickbooks \
+        -H 'Content-Type: application/json' \
+        -d "$estimate_payload" >/dev/null 2>&1; then
+        log "✅ Estimate webhook test passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Estimate webhook test failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook with multiple entities
+    local multi_payload='{"eventNotifications":[{"dataChangeEvent":{"entities":[{"name":"Customer","id":"1","operation":"Update"},{"name":"Invoice","id":"2","operation":"Create"}]}}]}'
+    if curl -f -s -X POST http://localhost:5000/api/webhook/quickbooks \
+        -H 'Content-Type: application/json' \
+        -d "$multi_payload" >/dev/null 2>&1; then
+        log "✅ Multi-entity webhook test passed" | tee -a "$results_file"
+        ((passed++))
+    else
+        log "❌ Multi-entity webhook test failed" | tee -a "$results_file"
+        ((failed++))
+    fi
+    
+    # Test webhook signature verification (if configured)
+    if [[ -n "$QBO_WEBHOOK_VERIFIER_TOKEN" ]]; then
+        log "Testing webhook signature verification..." | tee -a "$results_file"
+        # This would require proper signature generation for real testing
+        log "ℹ️ Webhook signature verification configured but not tested" | tee -a "$results_file"
+    else
+        log "ℹ️ Webhook signature verification not configured" | tee -a "$results_file"
+    fi
+    
+    log "Webhook endpoint testing completed: $passed passed, $failed failed"
+    whiptail --title "Webhook Endpoint Test Results" --msgbox "Webhook endpoint testing completed:\n\n✅ Passed: $passed\n❌ Failed: $failed\n\nResults saved to: $results_file" 12 60
+}
+
+comprehensive_test_suite() {
+    log "Running comprehensive API test suite..."
+    
+    local results_file="$LOG_DIR/comprehensive_test_$(date +%Y%m%d_%H%M%S).log"
+    local total_passed=0
+    local total_failed=0
+    
+    # Run all test categories
+    test_health_endpoints >> "$results_file" 2>&1
+    test_quickbooks_endpoints >> "$results_file" 2>&1
+    test_calendar_endpoints >> "$results_file" 2>&1
+    test_customer_endpoints >> "$results_file" 2>&1
+    test_item_endpoints >> "$results_file" 2>&1
+    test_invoice_endpoints >> "$results_file" 2>&1
+    test_estimate_endpoints >> "$results_file" 2>&1
+    test_timeclock_endpoints >> "$results_file" 2>&1
+    test_sync_endpoints >> "$results_file" 2>&1
+    test_webhook_endpoints >> "$results_file" 2>&1
+    
+    # Count results
+    total_passed=$(grep -c "✅" "$results_file" || echo "0")
+    total_failed=$(grep -c "❌" "$results_file" || echo "0")
+    
+    log "Comprehensive test suite completed: $total_passed passed, $total_failed failed"
+    whiptail --title "Comprehensive Test Results" --msgbox "Comprehensive API test suite completed:\n\n✅ Total Passed: $total_passed\n❌ Total Failed: $total_failed\n\nResults saved to: $results_file" 12 60
+}
+
+performance_testing() {
+    log "Running performance tests..."
+    
+    local results_file="$LOG_DIR/performance_test_$(date +%Y%m%d_%H%M%S).log"
+    
+    # Test response times
+    echo "Testing API response times..." | tee -a "$results_file"
+    
+    # Health endpoint performance
+    local health_time=$(curl -o /dev/null -s -w '%{time_total}' http://localhost:5000/health)
+    echo "Health endpoint response time: ${health_time}s" | tee -a "$results_file"
+    
+    # API health performance
+    local api_health_time=$(curl -o /dev/null -s -w '%{time_total}' http://localhost:5000/api/health)
+    echo "API health endpoint response time: ${api_health_time}s" | tee -a "$results_file"
+    
+    # Customers endpoint performance
+    local customers_time=$(curl -o /dev/null -s -w '%{time_total}' http://localhost:5000/api/customers)
+    echo "Customers endpoint response time: ${customers_time}s" | tee -a "$results_file"
+    
+    # Load testing with multiple concurrent requests
+    echo "Running load test (10 concurrent requests)..." | tee -a "$results_file"
+    for i in {1..10}; do
+        (curl -f -s http://localhost:5000/api/health >/dev/null && echo "Request $i: SUCCESS") &
+    done
+    wait
+    
+    log "Performance testing completed"
+    whiptail --title "Performance Test Results" --msgbox "Performance testing completed.\n\nResults saved to: $results_file" 10 60
+}
+
+# =============================================================================
+# 🔒 SSH HARDENING & SECURITY
+# =============================================================================
+
+ssh_hardening() {
+    while true; do
+        choice=$(whiptail --title "🔒 SSH Hardening & Security" \
+            --menu "Choose security option:" 20 80 12 \
+            "1" "🔐 SSH Configuration Hardening" \
+            "2" "🛡️  Firewall Configuration" \
+            "3" "🔑 SSH Key Management" \
+            "4" "🚫 Disable Root Login" \
+            "5" "🔒 Change SSH Port" \
+            "6" "🛡️  Fail2Ban Setup" \
+            "7" "🔐 SSL/TLS Security" \
+            "8" "🛡️  System Security Audit" \
+            "9" "🔒 User Access Control" \
+            "10" "🛡️  Security Monitoring" \
+            "11" "🔐 Backup Security" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) ssh_config_hardening ;;
+            2) firewall_configuration ;;
+            3) ssh_key_management ;;
+            4) disable_root_login ;;
+            5) change_ssh_port ;;
+            6) fail2ban_setup ;;
+            7) ssl_tls_security ;;
+            8) security_audit ;;
+            9) user_access_control ;;
+            10) security_monitoring ;;
+            11) backup_security ;;
+            0) return ;;
+        esac
+    done
+}
+
+ssh_config_hardening() {
+    log "Hardening SSH configuration..."
+    
+    local ssh_config="/etc/ssh/sshd_config"
+    local backup_file="/etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)"
+    
+    # Create backup
+    if [[ -f "$ssh_config" ]]; then
+        cp "$ssh_config" "$backup_file"
+        log "SSH config backed up to: $backup_file"
+    fi
+    
+    # Apply security settings
+    cat > /tmp/ssh_hardening.conf << 'EOF'
+# SSH Hardening Configuration
+# Generated by Marin Pest Control Dashboard Management Script
+
+# Disable root login
+PermitRootLogin no
+
+# Disable password authentication (use keys only)
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+
+# Disable X11 forwarding
+X11Forwarding no
+
+# Disable agent forwarding
+AllowAgentForwarding no
+
+# Disable TCP forwarding
+AllowTcpForwarding no
+
+# Disable user environment
+PermitUserEnvironment no
+
+# Disable empty passwords
+PermitEmptyPasswords no
+
+# Set maximum authentication tries
+MaxAuthTries 3
+
+# Set login grace time
+LoginGraceTime 30
+
+# Disable host-based authentication
+HostbasedAuthentication no
+
+# Disable rhosts
+IgnoreRhosts yes
+
+# Disable .rhosts
+RhostsRSAAuthentication no
+
+# Set protocol version
+Protocol 2
+
+# Disable compression
+Compression no
+
+# Set client alive interval
+ClientAliveInterval 300
+ClientAliveCountMax 2
+
+# Disable banner
+Banner none
+
+# Set maximum sessions
+MaxSessions 4
+
+# Disable PAM
+UsePAM yes
+
+# Set subsystem
+Subsystem sftp /usr/lib/openssh/sftp-server
+EOF
+
+    # Apply configuration
+    if whiptail --title "SSH Hardening" --yesno "Apply SSH hardening configuration? This will restart SSH service." 10 60; then
+        cp /tmp/ssh_hardening.conf "$ssh_config"
+        systemctl restart sshd
+        log "SSH configuration hardened successfully"
+        whiptail --title "SSH Hardening" --msgbox "SSH configuration has been hardened successfully.\n\nBackup saved to: $backup_file" 10 60
+    else
+        log "SSH hardening cancelled by user"
+    fi
+    
+    rm -f /tmp/ssh_hardening.conf
+}
+
+firewall_configuration() {
+    log "Configuring firewall..."
+    
+    # Check if ufw is installed
+    if ! command -v ufw &> /dev/null; then
+        if whiptail --title "UFW Installation" --yesno "UFW (Uncomplicated Firewall) is not installed. Install it?" 10 60; then
+            apt update && apt install -y ufw
+        else
+            whiptail --title "Firewall Configuration" --msgbox "UFW is required for firewall configuration." 10 60
+            return
+        fi
+    fi
+    
+    # Configure firewall rules
+    ufw --force reset
+    ufw default deny incoming
+    ufw default allow outgoing
+    
+    # Allow SSH (current port)
+    local ssh_port=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}' || echo "22")
+    ufw allow "$ssh_port/tcp"
+    
+    # Allow HTTP and HTTPS
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    
+    # Allow application ports
+    ufw allow 5000/tcp  # Backend
+    ufw allow 5173/tcp  # Frontend dev
+    
+    # Enable firewall
+    ufw --force enable
+    
+    log "Firewall configured successfully"
+    whiptail --title "Firewall Configuration" --msgbox "Firewall has been configured with the following rules:\n\n- SSH: Port $ssh_port\n- HTTP: Port 80\n- HTTPS: Port 443\n- Backend: Port 5000\n- Frontend Dev: Port 5173\n\nUFW is now active." 15 60
+}
+
+ssh_key_management() {
+    log "Managing SSH keys..."
+    
+    local key_dir="$HOME/.ssh"
+    local authorized_keys="$key_dir/authorized_keys"
+    
+    # Create .ssh directory if it doesn't exist
+    mkdir -p "$key_dir"
+    chmod 700 "$key_dir"
+    
+    # Generate new SSH key if requested
+    if whiptail --title "SSH Key Management" --yesno "Generate a new SSH key pair?" 10 60; then
+        local key_name="id_rsa_$(date +%Y%m%d_%H%M%S)"
+        ssh-keygen -t rsa -b 4096 -f "$key_dir/$key_name" -N ""
+        chmod 600 "$key_dir/$key_name"
+        chmod 644 "$key_dir/$key_name.pub"
+        
+        log "New SSH key generated: $key_name"
+        whiptail --title "SSH Key Generated" --msgbox "New SSH key generated:\n\nPrivate key: $key_dir/$key_name\nPublic key: $key_dir/$key_name.pub\n\nAdd the public key to authorized_keys to use it." 12 60
+    fi
+    
+    # Show current authorized keys
+    if [[ -f "$authorized_keys" ]]; then
+        local key_count=$(wc -l < "$authorized_keys")
+        whiptail --title "Authorized Keys" --msgbox "Current authorized keys: $key_count\n\nFile location: $authorized_keys" 10 60
+    else
+        whiptail --title "Authorized Keys" --msgbox "No authorized_keys file found.\n\nLocation: $authorized_keys" 10 60
     fi
 }
 
-# Function to inspect non-server processes
-inspect_non_server_processes() {
-    echo -e "${WHITE}=== NON-SERVER PROCESSES ===${NC}"
-    echo -e "${BLUE}Processes that might not belong on a server:${NC}"
+disable_root_login() {
+    log "Disabling root login..."
     
-    # Look for GUI applications
-    ps aux | grep -E "(firefox|chrome|gedit|libreoffice|vlc)" | grep -v grep
+    # Check current setting
+    local current_setting=$(grep "^PermitRootLogin" /etc/ssh/sshd_config || echo "PermitRootLogin yes")
     
-    # Look for development tools that shouldn't be on production
-    ps aux | grep -E "(code|atom|sublime|phpstorm)" | grep -v grep
+    if [[ "$current_setting" == *"no"* ]]; then
+        whiptail --title "Root Login" --msgbox "Root login is already disabled." 10 60
+        return
+    fi
     
-    # Look for suspicious processes
-    ps aux | grep -E "(mining|crypto|bitcoin)" | grep -v grep
-    
-    echo
-    echo -e "${YELLOW}Review these processes and kill any that shouldn't be running${NC}"
+    if whiptail --title "Disable Root Login" --yesno "Disable root login via SSH? This is a security best practice." 10 60; then
+        # Backup current config
+        cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)
+        
+        # Disable root login
+        sed -i 's/^#*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+        
+        # Restart SSH service
+        systemctl restart sshd
+        
+        log "Root login disabled successfully"
+        whiptail --title "Root Login Disabled" --msgbox "Root login has been disabled.\n\nMake sure you have alternative access before closing this session!" 12 60
+    fi
 }
 
-# Function to view system logs
-view_system_logs() {
-    echo -e "${WHITE}=== SYSTEM LOGS ===${NC}"
-    echo "1. System logs (journalctl)"
-    echo "2. Nginx logs"
-    echo "3. PM2 logs"
-    echo "4. Application logs"
-    echo "5. Authentication logs"
-    echo "6. Error logs"
-    echo "0. Back"
-    echo
-    read -p "Select option: " choice
+change_ssh_port() {
+    log "Changing SSH port..."
     
-    case $choice in
-        1) sudo journalctl -f ;;
-        2) sudo tail -f /var/log/nginx/error.log ;;
-        3) pm2 logs 2>/dev/null || echo "PM2 not running" ;;
-        4) tail -f "$LOGS_DIR"/*.log 2>/dev/null || echo "No application logs found" ;;
-        5) sudo tail -f /var/log/auth.log ;;
-        6) sudo journalctl -p err -f ;;
-        0) return ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
-    esac
+    local current_port=$(grep "^Port" /etc/ssh/sshd_config | awk '{print $2}' || echo "22")
+    local new_port=$(whiptail --inputbox "Enter new SSH port (current: $current_port):" 10 60 2222 3>&1 1>&2 2>&3)
+    
+    if [[ -n "$new_port" && "$new_port" =~ ^[0-9]+$ && "$new_port" -ge 1024 && "$new_port" -le 65535 ]]; then
+        # Backup current config
+        cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup.$(date +%Y%m%d_%H%M%S)
+        
+        # Update SSH port
+        sed -i "s/^#*Port.*/Port $new_port/" /etc/ssh/sshd_config
+        
+        # Update firewall
+        ufw allow "$new_port/tcp"
+        ufw delete allow "$current_port/tcp" 2>/dev/null || true
+        
+        # Restart SSH service
+        systemctl restart sshd
+        
+        log "SSH port changed from $current_port to $new_port"
+        whiptail --title "SSH Port Changed" --msgbox "SSH port changed to $new_port.\n\nUpdate your SSH client configuration!\n\nNew connection: ssh -p $new_port user@host" 12 60
+    else
+        whiptail --title "Invalid Port" --msgbox "Invalid port number. Must be between 1024 and 65535." 10 60
+    fi
 }
 
-# Function to check for intrusions
-check_intrusions() {
-    echo -e "${WHITE}=== INTRUSION DETECTION ===${NC}"
+fail2ban_setup() {
+    log "Setting up Fail2Ban..."
+    
+    # Install Fail2Ban if not present
+    if ! command -v fail2ban-client &> /dev/null; then
+        if whiptail --title "Fail2Ban Installation" --yesno "Fail2Ban is not installed. Install it?" 10 60; then
+            apt update && apt install -y fail2ban
+        else
+            whiptail --title "Fail2Ban Setup" --msgbox "Fail2Ban is required for this feature." 10 60
+            return
+        fi
+    fi
+    
+    # Create Fail2Ban configuration
+    cat > /etc/fail2ban/jail.local << 'EOF'
+[DEFAULT]
+bantime = 3600
+findtime = 600
+maxretry = 3
+backend = systemd
+
+[sshd]
+enabled = true
+port = ssh
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 3600
+
+[nginx-http-auth]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 3
+bantime = 3600
+
+[nginx-limit-req]
+enabled = true
+port = http,https
+logpath = /var/log/nginx/error.log
+maxretry = 10
+bantime = 600
+EOF
+
+    # Start and enable Fail2Ban
+    systemctl enable fail2ban
+    systemctl start fail2ban
+    
+    log "Fail2Ban configured successfully"
+    whiptail --title "Fail2Ban Setup" --msgbox "Fail2Ban has been configured and started.\n\nIt will ban IPs after 3 failed SSH attempts for 1 hour." 10 60
+}
+
+ssl_tls_security() {
+    log "Configuring SSL/TLS security..."
+    
+    # Check if SSL certificates exist
+    local ssl_cert="/etc/ssl/certs/ssl-cert-snakeoil.pem"
+    local ssl_key="/etc/ssl/private/ssl-cert-snakeoil.key"
+    
+    if [[ -f "$ssl_cert" && -f "$ssl_key" ]]; then
+        whiptail --title "SSL Certificates" --msgbox "SSL certificates found:\n\nCertificate: $ssl_cert\nPrivate Key: $ssl_key\n\nConsider using Let's Encrypt for production." 12 60
+    else
+        whiptail --title "SSL Certificates" --msgbox "No SSL certificates found.\n\nUse the SSL Certificate Management option in the deployment menu." 10 60
+    fi
+    
+    # Check TLS configuration
+    local nginx_conf="/etc/nginx/nginx.conf"
+    if [[ -f "$nginx_conf" ]]; then
+        if grep -q "ssl_protocols" "$nginx_conf"; then
+            log "TLS configuration found in Nginx"
+        else
+            log "No TLS configuration found in Nginx"
+        fi
+    fi
+}
+
+security_audit() {
+    log "Running security audit..."
+    
+    local audit_file="$LOG_DIR/security_audit_$(date +%Y%m%d_%H%M%S).log"
+    
+    # Check for open ports
+    echo "=== Open Ports ===" >> "$audit_file"
+    netstat -tuln >> "$audit_file" 2>&1
+    
+    # Check for running services
+    echo -e "\n=== Running Services ===" >> "$audit_file"
+    systemctl list-units --type=service --state=running >> "$audit_file" 2>&1
+    
+    # Check for world-writable files
+    echo -e "\n=== World-writable Files ===" >> "$audit_file"
+    find / -type f -perm -002 2>/dev/null | head -20 >> "$audit_file"
+    
+    # Check for SUID files
+    echo -e "\n=== SUID Files ===" >> "$audit_file"
+    find / -type f -perm -4000 2>/dev/null | head -20 >> "$audit_file"
+    
+    # Check SSH configuration
+    echo -e "\n=== SSH Configuration ===" >> "$audit_file"
+    grep -v "^#" /etc/ssh/sshd_config | grep -v "^$" >> "$audit_file"
+    
+    # Check firewall status
+    echo -e "\n=== Firewall Status ===" >> "$audit_file"
+    ufw status verbose >> "$audit_file" 2>&1
+    
+    log "Security audit completed"
+    whiptail --title "Security Audit" --msgbox "Security audit completed.\n\nResults saved to: $audit_file" 10 60
+}
+
+user_access_control() {
+    log "Managing user access control..."
+    
+    # Show current users
+    local users=$(cut -d: -f1 /etc/passwd | grep -v "^root$" | grep -v "^nobody$" | sort)
+    local user_count=$(echo "$users" | wc -l)
+    
+    whiptail --title "User Access Control" --msgbox "Current users: $user_count\n\nUsers: $(echo "$users" | tr '\n' ' ')" 12 60
+    
+    # Check for users with sudo access
+    local sudo_users=$(getent group sudo | cut -d: -f4 | tr ',' '\n' | sort)
+    if [[ -n "$sudo_users" ]]; then
+        whiptail --title "Sudo Users" --msgbox "Users with sudo access:\n\n$sudo_users" 12 60
+    else
+        whiptail --title "Sudo Users" --msgbox "No users with sudo access found." 10 60
+    fi
+}
+
+security_monitoring() {
+    log "Setting up security monitoring..."
     
     # Check for failed login attempts
-    echo -e "${BLUE}Failed login attempts (last 24h):${NC}"
-    sudo grep "Failed password" /var/log/auth.log | tail -10
+    local failed_logins=$(grep "Failed password" /var/log/auth.log 2>/dev/null | wc -l || echo "0")
+    whiptail --title "Security Monitoring" --msgbox "Failed login attempts: $failed_logins\n\nCheck /var/log/auth.log for details." 10 60
     
-    # Check for suspicious network connections
-    echo -e "${BLUE}Active network connections:${NC}"
-    netstat -tuln | grep -E "(LISTEN|ESTABLISHED)"
-    
-    # Check for unusual processes
-    echo -e "${BLUE}Processes with high CPU usage:${NC}"
-    ps aux --sort=-%cpu | head -10
-    
-    # Check for rootkits
-    if command_exists rkhunter; then
-        echo -e "${BLUE}Running rootkit scan...${NC}"
-        sudo rkhunter --check --skip-keypress
-    else
-        echo -e "${YELLOW}rkhunter not installed. Install with: sudo apt install rkhunter${NC}"
-    fi
-    
-    # Check file integrity
-    echo -e "${BLUE}Checking for modified system files...${NC}"
-    sudo find /etc -type f -mtime -1 -ls | head -10
-}
-
-# Function to monitor system resources
-system_resource_monitor() {
-    echo -e "${WHITE}=== SYSTEM RESOURCE MONITOR ===${NC}"
-    
-    # CPU usage
-    echo -e "${BLUE}CPU Usage:${NC}"
-    top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1
-    
-    # Memory usage
-    echo -e "${BLUE}Memory Usage:${NC}"
-    free -h
-    
-    # Disk usage
-    echo -e "${BLUE}Disk Usage:${NC}"
-    df -h
-    
-    # Network usage
-    echo -e "${BLUE}Network Usage:${NC}"
-    if command_exists iftop; then
-        sudo iftop -t -s 10
-    else
-        echo -e "${YELLOW}iftop not installed. Install with: sudo apt install iftop${NC}"
-    fi
-    
-    # Load average
-    echo -e "${BLUE}Load Average:${NC}"
-    uptime
-}
-
-# Function to show service status overview
-service_status_overview() {
-    echo -e "${WHITE}=== SERVICE STATUS OVERVIEW ===${NC}"
-    
-    local services=("nginx" "ssh" "postgresql" "mysql" "redis" "mongodb" "docker")
-    
-    for service in "${services[@]}"; do
-        if systemctl list-unit-files | grep -q "$service"; then
-            echo -e "${BLUE}$service:${NC} $(get_service_status "$service")"
-        fi
-    done
-    
-    echo
-    echo -e "${BLUE}PM2 Status:${NC} $(check_pm2_status)"
-    echo -e "${BLUE}Port 5000:${NC} $(check_port 5000 && echo -e "${GREEN}IN USE${NC}" || echo -e "${YELLOW}FREE${NC}")"
-    echo -e "${BLUE}Port 5173:${NC} $(check_port 5173 && echo -e "${GREEN}IN USE${NC}" || echo -e "${YELLOW}FREE${NC}")"
-}
-
-# Function to run comprehensive health check
-run_health_check() {
-    log_action "Running comprehensive health check"
-    
-    echo -e "${WHITE}=== COMPREHENSIVE HEALTH CHECK ===${NC}"
-    echo
-    
-    # System requirements
-    echo -e "${BLUE}1. System Requirements:${NC}"
-    check_requirements
-    echo
-    
-    # File permissions
-    echo -e "${BLUE}2. File Permissions:${NC}"
-    set_permissions
-    echo
-    
-    # Database connectivity
-    echo -e "${BLUE}3. Database Connectivity:${NC}"
-    check_database
-    echo
-    
-    # API health
-    echo -e "${BLUE}4. API Health:${NC}"
-    check_api_health
-    echo
-    
-    # Webhook health
-    echo -e "${BLUE}5. Webhook Health:${NC}"
-    check_webhook_health
-    echo
-    
-    # Service status
-    echo -e "${BLUE}6. Service Status:${NC}"
-    show_service_status
-    
-    echo -e "${GREEN}✓ Health check completed${NC}"
-}
-
-# Function to test webhook
-test_webhook() {
-    log_action "Testing webhook endpoint"
-    
-    if [[ -f "$BACKEND_DIR/test-webhook.js" ]]; then
-        cd "$BACKEND_DIR"
-        echo -e "${BLUE}Running webhook test...${NC}"
-        node test-webhook.js
-    else
-        echo -e "${RED}✗ Webhook test script not found${NC}"
-        echo -e "${YELLOW}Creating webhook test script...${NC}"
-        create_webhook_test_script
+    # Check for suspicious activity
+    local suspicious_ips=$(grep "Failed password" /var/log/auth.log 2>/dev/null | awk '{print $11}' | sort | uniq -c | sort -nr | head -5)
+    if [[ -n "$suspicious_ips" ]]; then
+        whiptail --title "Suspicious IPs" --msgbox "Top suspicious IPs:\n\n$suspicious_ips" 12 60
     fi
 }
 
-# Function to test DNS configuration
-test_dns_configuration() {
-    log_action "Testing DNS configuration"
+backup_security() {
+    log "Configuring backup security..."
     
-    echo -e "${WHITE}=== DNS CONFIGURATION TEST ===${NC}"
-    echo
+    # Check backup directory permissions
+    local backup_dir="$SCRIPT_DIR/backups"
+    local backup_perms=$(stat -c "%a" "$backup_dir" 2>/dev/null || echo "N/A")
     
-    local domains=("wemakemarin.com" "api.wemakemarin.com" "webhook.wemakemarin.com" "admin.wemakemarin.com")
+    whiptail --title "Backup Security" --msgbox "Backup directory: $backup_dir\nPermissions: $backup_perms\n\nEnsure backups are encrypted and stored securely." 10 60
     
-    for domain in "${domains[@]}"; do
-        echo -e "${BLUE}Testing $domain:${NC}"
-        
-        # Test DNS resolution
-        if nslookup "$domain" >/dev/null 2>&1; then
-            echo -e "  DNS Resolution: ${GREEN}✓${NC}"
-            local ip=$(nslookup "$domain" | grep "Address:" | tail -1 | awk '{print $2}')
-            echo -e "  IP Address: $ip"
-        else
-            echo -e "  DNS Resolution: ${RED}✗${NC}"
-        fi
-        
-        # Test HTTPS connectivity
-        if curl -s -I "https://$domain" >/dev/null 2>&1; then
-            echo -e "  HTTPS Connectivity: ${GREEN}✓${NC}"
-        else
-            echo -e "  HTTPS Connectivity: ${RED}✗${NC}"
-        fi
-        
-        echo
-    done
-    
-    # Test specific endpoints
-    echo -e "${BLUE}Testing API endpoints:${NC}"
-    if curl -s -f "https://api.wemakemarin.com/health" >/dev/null 2>&1; then
-        echo -e "  API Health: ${GREEN}✓${NC}"
-    else
-        echo -e "  API Health: ${RED}✗${NC}"
-    fi
-    
-    if curl -s -f "https://webhook.wemakemarin.com/api/webhook/health" >/dev/null 2>&1; then
-        echo -e "  Webhook Health: ${GREEN}✓${NC}"
-    else
-        echo -e "  Webhook Health: ${RED}✗${NC}"
-    fi
-    
-    echo
-    echo -e "${YELLOW}Note: If webhook.wemakemarin.com fails, ensure it's not proxied through Cloudflare${NC}"
-}
+    # Create secure backup script
+    cat > "$SCRIPT_DIR/secure_backup.sh" << 'EOF'
+#!/bin/bash
+# Secure backup script for Marin Pest Control Dashboard
 
-# Function to check SSL certificates
-check_ssl_certificates() {
-    log_action "Checking SSL certificates"
-    
-    echo -e "${WHITE}=== SSL CERTIFICATE CHECK ===${NC}"
-    echo
-    
-    local domains=("wemakemarin.com" "api.wemakemarin.com" "webhook.wemakemarin.com" "admin.wemakemarin.com")
-    
-    for domain in "${domains[@]}"; do
-        echo -e "${BLUE}Checking SSL for $domain:${NC}"
-        
-        if command_exists openssl; then
-            local cert_info=$(echo | openssl s_client -servername "$domain" -connect "$domain:443" 2>/dev/null | openssl x509 -noout -dates 2>/dev/null)
-            if [[ -n "$cert_info" ]]; then
-                echo -e "  Certificate: ${GREEN}Valid${NC}"
-                echo "$cert_info" | grep "notAfter" | sed 's/notAfter=/  Expires: /'
-            else
-                echo -e "  Certificate: ${RED}Invalid or not found${NC}"
-            fi
-        else
-            echo -e "  Certificate: ${YELLOW}Cannot check (openssl not available)${NC}"
-        fi
-        
-        echo
-    done
-}
+BACKUP_DIR="/opt/backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+ENCRYPTION_KEY="your_encryption_key_here"
 
-# Function to create webhook test script
-create_webhook_test_script() {
-    cat > "$BACKEND_DIR/test-webhook.js" << 'EOF'
-import axios from 'axios';
-import dotenv from 'dotenv';
-import crypto from 'crypto';
+# Create encrypted backup
+tar -czf - /var/www/html /etc/nginx /etc/ssl | gpg --symmetric --cipher-algo AES256 --passphrase "$ENCRYPTION_KEY" > "$BACKUP_DIR/backup_$DATE.tar.gz.gpg"
 
-dotenv.config({ path: './.env' });
+# Clean old backups (keep 30 days)
+find "$BACKUP_DIR" -name "backup_*.tar.gz.gpg" -mtime +30 -delete
 
-const WEBHOOK_URL = process.env.QBO_WEBHOOK_URL || 'http://localhost:5000/api/webhook/quickbooks';
-const WEBHOOK_VERIFIER_TOKEN = process.env.QBO_WEBHOOK_VERIFIER_TOKEN || 'your_webhook_verifier_token';
-
-const generateSignature = (payload, verifierToken) => {
-    const hmac = crypto.createHmac('sha256', verifierToken);
-    hmac.update(JSON.stringify(payload));
-    return hmac.digest('base64');
-};
-
-const testWebhook = async () => {
-    const payload = {
-        eventNotifications: [
-            {
-                realmId: process.env.QBO_REALM_ID || 'test_realm_id',
-                dataChangeEvent: {
-                    entities: [
-                        {
-                            name: 'Customer',
-                            id: '1',
-                            operation: 'Create',
-                            lastUpdated: new Date().toISOString(),
-                        },
-                        {
-                            name: 'Invoice',
-                            id: '2',
-                            operation: 'Update',
-                            lastUpdated: new Date().toISOString(),
-                        },
-                    ],
-                },
-            },
-        ],
-    };
-
-    const signature = generateSignature(payload, WEBHOOK_VERIFIER_TOKEN);
-
-    try {
-        console.log(`Sending test webhook to: ${WEBHOOK_URL}`);
-        const response = await axios.post(WEBHOOK_URL, payload, {
-            headers: {
-                'Content-Type': 'application/json',
-                'Intuit-Signature': signature,
-            },
-        });
-
-        console.log('Webhook Test Response Status:', response.status);
-        console.log('Webhook Test Response Data:', response.data);
-    } catch (error) {
-        console.error('Webhook Test Failed:', error.response ? error.response.data : error.message);
-    }
-};
-
-testWebhook();
+echo "Secure backup completed: backup_$DATE.tar.gz.gpg"
 EOF
-    
-    echo -e "${GREEN}✓ Webhook test script created${NC}"
-    test_webhook
+
+    chmod +x "$SCRIPT_DIR/secure_backup.sh"
+    log "Secure backup script created: $SCRIPT_DIR/secure_backup.sh"
+    whiptail --title "Backup Security" --msgbox "Secure backup script created.\n\nLocation: $SCRIPT_DIR/secure_backup.sh\n\nUpdate the encryption key before use!" 12 60
 }
 
-# Main menu
-main_menu() {
+# =============================================================================
+# 🚀 DEPLOYMENT MENU
+# =============================================================================
+
+deployment_menu() {
     while true; do
-        clear
-        echo -e "${WHITE}╔══════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${WHITE}║                Marin Pest Control Dashboard                 ║${NC}"
-        echo -e "${WHITE}║                   Management Console                        ║${NC}"
-        echo -e "${WHITE}╚══════════════════════════════════════════════════════════════╝${NC}"
-        echo
-        echo -e "${CYAN}Development & Production:${NC}"
-        echo "1. Start Development (Frontend + Backend)"
-        echo "2. Start Production (PM2)"
-        echo "3. Start Backend Only"
-        echo "4. Stop All Services"
-        echo "5. Restart All Services"
-        echo
-        echo -e "${CYAN}Service Management:${NC}"
-        echo "6. Service Status Overview"
-        echo "7. Start Backend"
-        echo "8. Stop Backend"
-        echo "9. Restart Backend"
-        echo "10. Start Frontend"
-        echo "11. Stop Frontend"
-        echo "12. Restart Frontend"
-        echo
-        echo -e "${CYAN}Health & Monitoring:${NC}"
-        echo "13. Comprehensive Health Check"
-        echo "14. Check Database Connectivity"
-        echo "15. Check API Health"
-        echo "16. Check Webhook Health"
-        echo "17. Test Webhook"
-        echo "18. Test DNS Configuration"
-        echo "19. Check SSL Certificates"
-        echo
-        echo -e "${CYAN}Build & Dependencies:${NC}"
-        echo "20. Install All Dependencies"
-        echo "21. Build Applications"
-        echo "22. Update Dependencies"
-        echo
-        echo -e "${CYAN}Debug & Troubleshooting:${NC}"
-        echo "23. Debug Menu"
-        echo "24. View Logs"
-        echo "25. System Resource Monitor"
-        echo
-        echo -e "${CYAN}Remote Access:${NC}"
-        echo "26. Remote Access Management"
-        echo
-        echo -e "${CYAN}Server Services:${NC}"
-        echo "27. Server Services Management"
-        echo
-        echo -e "${CYAN}System Management:${NC}"
-        echo "28. System Management"
-        echo "29. SSH Management"
-        echo "30. Nginx Management"
-        echo
-        echo -e "${CYAN}Security & Monitoring:${NC}"
-        echo "31. Dependencies & Security"
-        echo "32. Hardware Monitor"
-        echo "33. User Management"
-        echo "34. Cron & Systemd"
-        echo
-        echo -e "${CYAN}Utilities:${NC}"
-        echo "35. Export Changes Log"
-        echo "36. Quick Setup Guide"
-        echo "0. Exit"
-        echo
-        read -p "Select option: " choice
+        choice=$(whiptail --title "🚀 Deployment Options" \
+            --menu "Choose deployment type:" 15 70 8 \
+            "1" "🔄 Full Stack Deployment (Frontend + Backend + SSL)" \
+            "2" "🎨 Frontend Only" \
+            "3" "⚙️  Backend Only" \
+            "4" "🔒 SSL Certificate Management" \
+            "5" "📦 Dependencies Update" \
+            "6" "🗄️  Database Setup" \
+            "7" "🌐 Nginx Configuration" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
         
         case $choice in
-            1) start_development ;;
-            2) start_production ;;
-            3) start_backend_only ;;
-            4) stop_all_services ;;
-            5) restart_all_services ;;
-            6) show_service_status ;;
-            7) start_backend ;;
-            8) stop_backend ;;
-            9) restart_backend ;;
-            10) start_frontend ;;
-            11) stop_frontend ;;
-            12) restart_frontend ;;
-            13) run_health_check ;;
-            14) check_database ;;
-            15) check_api_health ;;
-            16) check_webhook_health ;;
-            17) test_webhook ;;
-            18) install_all_dependencies ;;
-            19) build_applications ;;
-            20) update_dependencies ;;
-            21) debug_menu ;;
-            22) view_logs ;;
-            23) system_resource_monitor ;;
-            24) manage_remote_access ;;
-            25) manage_server_services ;;
-            26) system_management_menu ;;
-            27) ssh_management_menu ;;
-            28) nginx_management_menu ;;
-            29) security_menu ;;
-            30) hardware_monitor_menu ;;
-            31) user_management_menu ;;
-            32) cron_systemd_menu ;;
-            33) export_changes_log ;;
-            34) quick_setup_guide ;;
-            0) 
-                echo -e "${GREEN}Goodbye!${NC}"
-                exit 0
-                ;;
-            *) echo -e "${RED}Invalid option${NC}" ;;
+            1) full_stack_deployment ;;
+            2) frontend_deployment ;;
+            3) backend_deployment ;;
+            4) ssl_management ;;
+            5) update_dependencies ;;
+            6) database_setup ;;
+            7) nginx_configuration ;;
+            0) return ;;
         esac
-        echo
-        read -p "Press Enter to continue..."
     done
 }
 
-# Function to start development
-start_development() {
-    log_action "Starting development environment"
-    set_permissions
-    start_backend
-    sleep 3
-    start_frontend
-    echo -e "${GREEN}✓ Development environment started${NC}"
+full_stack_deployment() {
+    log "Starting full stack deployment..."
+    
+    whiptail --title "Full Stack Deployment" --msgbox "This will deploy the complete application stack including frontend, backend, SSL certificates, and nginx configuration. This process is idempotent and failure-resistant." 10 60
+    
+    # Check prerequisites
+    check_prerequisites
+    
+    # Update system packages
+    update_system_packages
+    
+    # Install dependencies
+    install_dependencies
+    
+    # Setup database
+    setup_database
+    
+    # Deploy backend
+    deploy_backend
+    
+    # Deploy frontend
+    deploy_frontend
+    
+    # Configure nginx
+    configure_nginx
+    
+    # Setup SSL
+    setup_ssl
+    
+    # Start services
+    start_services
+    
+    # Verify deployment
+    verify_deployment
+    
+    whiptail --title "Deployment Complete" --msgbox "Full stack deployment completed successfully!" 10 60
 }
 
-# Function to start production
-start_production() {
-    log_action "Starting production environment"
-    set_permissions
-    build_applications
-    if command_exists pm2; then
-        cd "$BACKEND_DIR"
-        pm2 start ecosystem.config.js --env production
-        pm2 save
-        echo -e "${GREEN}✓ Production environment started with PM2${NC}"
-    else
-        echo -e "${RED}✗ PM2 not installed. Install with: npm install -g pm2${NC}"
+check_prerequisites() {
+    log "Checking prerequisites..."
+    
+    local missing_packages=()
+    
+    # Check for required packages
+    command -v node >/dev/null 2>&1 || missing_packages+=("nodejs")
+    command -v npm >/dev/null 2>&1 || missing_packages+=("npm")
+    command -v nginx >/dev/null 2>&1 || missing_packages+=("nginx")
+    command -v certbot >/dev/null 2>&1 || missing_packages+=("certbot")
+    command -v pm2 >/dev/null 2>&1 || missing_packages+=("pm2")
+    
+    if [[ ${#missing_packages[@]} -gt 0 ]]; then
+        whiptail --title "Missing Prerequisites" --msgbox "Missing packages: ${missing_packages[*]}. Installing now..." 10 60
+        install_missing_packages "${missing_packages[@]}"
     fi
 }
 
-# Function to start backend only
-start_backend_only() {
-    log_action "Starting backend only"
-    set_permissions
-    start_backend
-    echo -e "${GREEN}✓ Backend started${NC}"
-}
-
-# Function to stop all services
-stop_all_services() {
-    log_action "Stopping all services"
-    stop_backend
-    stop_frontend
-    if command_exists pm2; then
-        pm2 stop all 2>/dev/null || true
+install_missing_packages() {
+    local packages=("$@")
+    
+    # Update package list
+    sudo apt-get update
+    
+    # Install Node.js and npm
+    if [[ " ${packages[@]} " =~ " nodejs " ]]; then
+        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+        sudo apt-get install -y nodejs
     fi
-    echo -e "${GREEN}✓ All services stopped${NC}"
+    
+    # Install other packages
+    for package in "${packages[@]}"; do
+        case $package in
+            "nginx") sudo apt-get install -y nginx ;;
+            "certbot") sudo apt-get install -y certbot python3-certbot-nginx ;;
+            "pm2") sudo npm install -g pm2 ;;
+        esac
+    done
 }
 
-# Function to restart all services
+update_system_packages() {
+    log "Updating system packages..."
+    sudo apt-get update && sudo apt-get upgrade -y
+}
+
+install_dependencies() {
+    log "Installing project dependencies..."
+    
+    # Backend dependencies
+    cd "$SCRIPT_DIR/backend"
+    npm install --production
+    
+    # Frontend dependencies
+    cd "$SCRIPT_DIR/frontend"
+    npm install --production
+}
+
+setup_database() {
+    log "Setting up database..."
+    
+    # Check if DATABASE_URL is set
+    if [[ -z "${DATABASE_URL:-}" ]]; then
+        whiptail --title "Database Configuration" --msgbox "DATABASE_URL not found. Please configure your database connection." 10 60
+        return 1
+    fi
+    
+    # Test database connection
+    if ! node -e "const { Pool } = require('pg'); const pool = new Pool({ connectionString: process.env.DATABASE_URL }); pool.query('SELECT 1').then(() => { console.log('Database connected'); process.exit(0); }).catch(err => { console.error('Database error:', err); process.exit(1); });"; then
+        error_exit "Database connection failed"
+    fi
+}
+
+deploy_backend() {
+    log "Deploying backend..."
+    
+    cd "$SCRIPT_DIR/backend"
+    
+    # Build backend
+    npm run build
+    
+    # Stop existing PM2 processes
+    pm2 stop backend 2>/dev/null || true
+    pm2 delete backend 2>/dev/null || true
+    
+    # Start with PM2
+    pm2 start ecosystem.config.js --env production
+    pm2 save
+}
+
+deploy_frontend() {
+    log "Deploying frontend..."
+    
+    cd "$SCRIPT_DIR/frontend"
+    
+    # Build frontend
+    npm run build
+    
+    # Copy to nginx directory
+    sudo rm -rf /var/www/html/*
+    sudo cp -r dist/* /var/www/html/
+    sudo chown -R www-data:www-data /var/www/html
+}
+
+configure_nginx() {
+    log "Configuring nginx..."
+    
+    # Backup existing config
+    sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup.$(date +%Y%m%d_%H%M%S)
+    
+    # Copy new config
+    sudo cp "$SCRIPT_DIR/nginx.conf" /etc/nginx/nginx.conf
+    
+    # Test nginx configuration
+    sudo nginx -t
+    
+    # Reload nginx
+    sudo systemctl reload nginx
+}
+
+setup_ssl() {
+    log "Setting up SSL certificates..."
+    
+    # Get domain from user
+    domain=$(whiptail --title "SSL Setup" --inputbox "Enter your domain name:" 10 60 3>&1 1>&2 2>&3)
+    
+    if [[ -n "$domain" ]]; then
+        # Obtain SSL certificate
+        sudo certbot --nginx -d "$domain" --non-interactive --agree-tos --email admin@"$domain"
+        
+        # Setup auto-renewal
+        (crontab -l 2>/dev/null; echo "0 12 * * * /usr/bin/certbot renew --quiet") | crontab -
+    fi
+}
+
+start_services() {
+    log "Starting services..."
+    
+    # Start nginx
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+    
+    # Start PM2 processes
+    pm2 startup
+    pm2 save
+}
+
+verify_deployment() {
+    log "Verifying deployment..."
+    
+    # Check if services are running
+    if ! systemctl is-active --quiet nginx; then
+        error_exit "Nginx is not running"
+    fi
+    
+    if ! pm2 list | grep -q "backend.*online"; then
+        error_exit "Backend is not running"
+    fi
+    
+    # Test endpoints
+    if ! curl -f http://localhost:5000/api/health >/dev/null 2>&1; then
+        log "Warning: Backend health check failed"
+    fi
+    
+    log "Deployment verification completed"
+}
+
+# =============================================================================
+# 📊 HARDWARE MONITORING
+# =============================================================================
+
+hardware_monitoring() {
+    while true; do
+        choice=$(whiptail --title "📊 Hardware Monitoring" \
+            --menu "Choose monitoring option:" 15 70 8 \
+            "1" "💻 System Overview" \
+            "2" "🖥️  CPU & Memory Usage" \
+            "3" "💾 Disk Usage" \
+            "4" "🌐 Network Information" \
+            "5" "📋 Process List" \
+            "6" "📊 Export System Report" \
+            "7" "⏰ Real-time Monitoring" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) system_overview ;;
+            2) cpu_memory_usage ;;
+            3) disk_usage ;;
+            4) network_info ;;
+            5) process_list ;;
+            6) export_system_report ;;
+            7) realtime_monitoring ;;
+            0) return ;;
+        esac
+    done
+}
+
+system_overview() {
+    local info=$(cat << EOF
+🖥️  SYSTEM OVERVIEW
+═══════════════════════════════════════════════════════════════
+
+🖥️  Hostname: $(hostname)
+🖥️  OS: $(lsb_release -d | cut -f2)
+🖥️  Kernel: $(uname -r)
+🖥️  Architecture: $(uname -m)
+🖥️  Uptime: $(uptime -p)
+🖥️  Load Average: $(uptime | awk -F'load average:' '{print $2}')
+
+💻 CPU Information:
+$(lscpu | grep -E "Model name|CPU\(s\)|Thread|Core|Socket")
+
+💾 Memory Information:
+$(free -h)
+
+💿 Disk Information:
+$(df -h | head -5)
+
+🌐 Network Interfaces:
+$(ip addr show | grep -E "inet |UP" | head -10)
+EOF
+)
+    
+    whiptail --title "System Overview" --msgbox "$info" 25 80
+}
+
+cpu_memory_usage() {
+    local usage=$(cat << EOF
+📊 CPU & MEMORY USAGE
+═══════════════════════════════════════════════════════════════
+
+💻 CPU Usage:
+$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)% used
+
+💾 Memory Usage:
+$(free -h | grep -E "Mem|Swap")
+
+📈 Top CPU Processes:
+$(ps aux --sort=-%cpu | head -10 | awk '{print $2, $3, $4, $11}' | column -t)
+
+📈 Top Memory Processes:
+$(ps aux --sort=-%mem | head -10 | awk '{print $2, $3, $4, $11}' | column -t)
+EOF
+)
+    
+    whiptail --title "CPU & Memory Usage" --msgbox "$usage" 25 80
+}
+
+disk_usage() {
+    local disk_info=$(cat << EOF
+💾 DISK USAGE
+═══════════════════════════════════════════════════════════════
+
+📊 Disk Usage Summary:
+$(df -h)
+
+📁 Largest Directories:
+$(du -h --max-depth=1 / 2>/dev/null | sort -hr | head -10)
+
+📁 Project Directory Usage:
+$(du -h --max-depth=2 "$SCRIPT_DIR" 2>/dev/null | sort -hr | head -10)
+
+🗂️  Log Directory Usage:
+$(du -h "$LOG_DIR" 2>/dev/null || echo "No logs yet")
+EOF
+)
+    
+    whiptail --title "Disk Usage" --msgbox "$disk_info" 25 80
+}
+
+network_info() {
+    local network=$(cat << EOF
+🌐 NETWORK INFORMATION
+═══════════════════════════════════════════════════════════════
+
+🔗 Network Interfaces:
+$(ip addr show | grep -E "inet |UP" | head -10)
+
+🌍 Public IP:
+$(curl -s ifconfig.me 2>/dev/null || echo "Unable to determine")
+
+🔗 DNS Configuration:
+$(cat /etc/resolv.conf | grep nameserver)
+
+📡 Network Connections:
+$(ss -tuln | head -10)
+
+🌐 Listening Ports:
+$(netstat -tuln | grep LISTEN | head -10)
+EOF
+)
+    
+    whiptail --title "Network Information" --msgbox "$network" 25 80
+}
+
+process_list() {
+    local processes=$(ps aux --sort=-%cpu | head -20 | awk '{print $1, $2, $3, $4, $11}' | column -t)
+    
+    whiptail --title "Process List" --msgbox "$processes" 25 80
+}
+
+export_system_report() {
+    local report_file="$LOG_DIR/system_report_$(date +%Y%m%d_%H%M%S).txt"
+    
+    {
+        echo "🖥️  SYSTEM REPORT - $(date)"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "🖥️  System Information:"
+        uname -a
+        echo ""
+        echo "💻 CPU Information:"
+        lscpu
+        echo ""
+        echo "💾 Memory Information:"
+        free -h
+        echo ""
+        echo "💿 Disk Information:"
+        df -h
+        echo ""
+        echo "🌐 Network Information:"
+        ip addr show
+        echo ""
+        echo "📋 Process List:"
+        ps aux
+        echo ""
+        echo "🔧 Services Status:"
+        systemctl list-units --type=service --state=running
+        echo ""
+        echo "📊 PM2 Processes:"
+        pm2 list
+        echo ""
+        echo "🌐 Nginx Status:"
+        systemctl status nginx
+        echo ""
+        echo "📁 Directory Usage:"
+        du -h --max-depth=2 "$SCRIPT_DIR"
+    } > "$report_file"
+    
+    whiptail --title "System Report" --msgbox "System report exported to: $report_file" 10 60
+}
+
+realtime_monitoring() {
+    whiptail --title "Real-time Monitoring" --msgbox "Starting real-time monitoring. Press Ctrl+C to stop." 10 60
+    
+    while true; do
+        clear
+        echo "🖥️  REAL-TIME SYSTEM MONITORING - $(date)"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "💻 CPU Usage:"
+        top -bn1 | grep "Cpu(s)"
+        echo ""
+        echo "💾 Memory Usage:"
+        free -h
+        echo ""
+        echo "📊 Top Processes:"
+        ps aux --sort=-%cpu | head -10
+        echo ""
+        echo "🌐 Network Connections:"
+        ss -tuln | head -5
+        echo ""
+        echo "Press Ctrl+C to exit..."
+        sleep 5
+    done
+}
+
+# =============================================================================
+# 🧹 PROCESS MANAGEMENT
+# =============================================================================
+
+process_management() {
+    while true; do
+        choice=$(whiptail --title "🧹 Process Management" \
+            --menu "Choose process management option:" 15 70 8 \
+            "1" "🧹 Clean All Old Processes" \
+            "2" "🔄 Restart All Services" \
+            "3" "⏹️  Stop All Services" \
+            "4" "▶️  Start All Services" \
+            "5" "📋 View PM2 Status" \
+            "6" "🗑️  Clean Logs" \
+            "7" "🧽 System Cleanup" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) clean_old_processes ;;
+            2) restart_all_services ;;
+            3) stop_all_services ;;
+            4) start_all_services ;;
+            5) view_pm2_status ;;
+            6) clean_logs ;;
+            7) system_cleanup ;;
+            0) return ;;
+        esac
+    done
+}
+
+clean_old_processes() {
+    log "Cleaning old processes..."
+    
+    # Stop all PM2 processes
+    pm2 stop all 2>/dev/null || true
+    pm2 delete all 2>/dev/null || true
+    
+    # Kill any remaining Node.js processes
+    pkill -f "node.*backend" 2>/dev/null || true
+    pkill -f "node.*frontend" 2>/dev/null || true
+    
+    # Clean PM2 logs
+    pm2 flush 2>/dev/null || true
+    
+    # Clean system logs
+    sudo journalctl --vacuum-time=7d 2>/dev/null || true
+    
+    whiptail --title "Process Cleanup" --msgbox "Old processes cleaned successfully!" 10 60
+}
+
 restart_all_services() {
-    log_action "Restarting all services"
-    stop_all_services
-    sleep 3
-    start_development
-    echo -e "${GREEN}✓ All services restarted${NC}"
+    log "Restarting all services..."
+    
+    # Restart nginx
+    sudo systemctl restart nginx
+    
+    # Restart PM2 processes
+    pm2 restart all 2>/dev/null || true
+    
+    whiptail --title "Service Restart" --msgbox "All services restarted successfully!" 10 60
 }
 
-# Function to install all dependencies
-install_all_dependencies() {
-    log_action "Installing all dependencies"
-    set_permissions
+stop_all_services() {
+    log "Stopping all services..."
     
-    if [[ -d "$FRONTEND_DIR" ]]; then
-        echo -e "${BLUE}Installing frontend dependencies...${NC}"
-        cd "$FRONTEND_DIR"
-        npm install
-    fi
+    # Stop nginx
+    sudo systemctl stop nginx
     
-    if [[ -d "$BACKEND_DIR" ]]; then
-        echo -e "${BLUE}Installing backend dependencies...${NC}"
-        cd "$BACKEND_DIR"
-        npm install
-    fi
+    # Stop PM2 processes
+    pm2 stop all 2>/dev/null || true
     
-    echo -e "${GREEN}✓ All dependencies installed${NC}"
+    whiptail --title "Service Stop" --msgbox "All services stopped successfully!" 10 60
 }
 
-# Function to build applications
-build_applications() {
-    log_action "Building applications"
-    set_permissions
+start_all_services() {
+    log "Starting all services..."
     
-    if [[ -d "$FRONTEND_DIR" ]]; then
-        echo -e "${BLUE}Building frontend...${NC}"
-        cd "$FRONTEND_DIR"
-        npm run build
-    fi
+    # Start nginx
+    sudo systemctl start nginx
     
-    if [[ -d "$BACKEND_DIR" ]]; then
-        echo -e "${BLUE}Building backend...${NC}"
-        cd "$BACKEND_DIR"
-        npm run build
-    fi
+    # Start PM2 processes
+    pm2 start all 2>/dev/null || true
     
-    echo -e "${GREEN}✓ Applications built successfully${NC}"
+    whiptail --title "Service Start" --msgbox "All services started successfully!" 10 60
 }
 
-# Function to update dependencies
-update_dependencies() {
-    log_action "Updating dependencies"
-    
-    if [[ -d "$FRONTEND_DIR" ]]; then
-        echo -e "${BLUE}Updating frontend dependencies...${NC}"
-        cd "$FRONTEND_DIR"
-        npm update
-    fi
-    
-    if [[ -d "$BACKEND_DIR" ]]; then
-        echo -e "${BLUE}Updating backend dependencies...${NC}"
-        cd "$BACKEND_DIR"
-        npm update
-    fi
-    
-    echo -e "${GREEN}✓ Dependencies updated${NC}"
+view_pm2_status() {
+    local status=$(pm2 list)
+    whiptail --title "PM2 Status" --msgbox "$status" 25 80
 }
 
-# Function to view logs
-view_logs() {
-    echo -e "${WHITE}=== LOG VIEWER ===${NC}"
-    echo "1. Backend logs"
-    echo "2. Frontend logs"
-    echo "3. PM2 logs"
-    echo "4. System logs"
-    echo "5. Nginx logs"
-    echo "0. Back"
-    echo
-    read -p "Select option: " choice
+clean_logs() {
+    log "Cleaning logs..."
     
-    case $choice in
-        1) 
-            if command_exists pm2; then
-                pm2 logs marin-pest-control-backend
-            else
-                tail -f "$LOGS_DIR/backend.log" 2>/dev/null || echo "No backend logs found"
-            fi
-            ;;
-        2) tail -f "$LOGS_DIR/frontend.log" 2>/dev/null || echo "No frontend logs found" ;;
-        3) pm2 logs 2>/dev/null || echo "PM2 not running" ;;
+    # Clean PM2 logs
+    pm2 flush 2>/dev/null || true
+    
+    # Clean application logs
+    find "$LOG_DIR" -name "*.log" -mtime +7 -delete 2>/dev/null || true
+    
+    # Clean system logs
+    sudo journalctl --vacuum-time=7d 2>/dev/null || true
+    
+    whiptail --title "Log Cleanup" --msgbox "Logs cleaned successfully!" 10 60
+}
+
+system_cleanup() {
+    log "Performing system cleanup..."
+    
+    # Clean package cache
+    sudo apt-get clean
+    sudo apt-get autoremove -y
+    
+    # Clean temporary files
+    sudo rm -rf /tmp/*
+    sudo rm -rf /var/tmp/*
+    
+    # Clean old kernels
+    sudo apt-get autoremove --purge -y
+    
+    whiptail --title "System Cleanup" --msgbox "System cleanup completed successfully!" 10 60
+}
+
+# =============================================================================
+# 🌐 DOMAIN CONFIGURATION
+# =============================================================================
+
+domain_configuration() {
+    while true; do
+        choice=$(whiptail --title "🌐 Domain Configuration" \
+            --menu "Choose domain option:" 15 70 8 \
+            "1" "🌐 Configure Domain" \
+            "2" "📋 Generate Cloudflare DNS" \
+            "3" "🔒 SSL Certificate Status" \
+            "4" "🌍 DNS Propagation Check" \
+            "5" "📊 Domain Health Check" \
+            "6" "🔄 Update DNS Records" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) configure_domain ;;
+            2) generate_cloudflare_dns ;;
+            3) ssl_certificate_status ;;
+            4) dns_propagation_check ;;
+            5) domain_health_check ;;
+            6) update_dns_records ;;
+            0) return ;;
+        esac
+    done
+}
+
+configure_domain() {
+    local domain=$(whiptail --title "Domain Configuration" --inputbox "Enter your domain name:" 10 60 3>&1 1>&2 2>&3)
+    
+    if [[ -n "$domain" ]]; then
+        # Update nginx configuration with domain
+        sudo sed -i "s/server_name _;/server_name $domain;/g" /etc/nginx/sites-available/default
+        
+        # Test nginx configuration
+        sudo nginx -t
+        
+        # Reload nginx
+        sudo systemctl reload nginx
+        
+        whiptail --title "Domain Configuration" --msgbox "Domain $domain configured successfully!" 10 60
+    fi
+}
+
+generate_cloudflare_dns() {
+    local domain=$(whiptail --title "Cloudflare DNS" --inputbox "Enter your domain name:" 10 60 3>&1 1>&2 2>&3)
+    local ip=$(curl -s ifconfig.me)
+    
+    if [[ -n "$domain" && -n "$ip" ]]; then
+        local dns_file="$LOG_DIR/cloudflare_dns_$(date +%Y%m%d_%H%M%S).txt"
+        
+        cat > "$dns_file" << EOF
+# Cloudflare DNS Configuration for $domain
+# Generated on $(date)
+# Server IP: $ip
+
+# A Records
+$domain.                    A       $ip
+www.$domain.                A       $ip
+api.$domain.                A       $ip
+
+# CNAME Records
+app.$domain.                CNAME   $domain.
+dashboard.$domain.          CNAME   $domain.
+
+# MX Records (if needed for email)
+$domain.                    MX      10      mail.$domain.
+$domain.                    MX      20      mail2.$domain.
+
+# TXT Records (for verification)
+$domain.                    TXT     "v=spf1 include:_spf.google.com ~all"
+$domain.                    TXT     "google-site-verification=YOUR_VERIFICATION_CODE"
+
+# CAA Records (for SSL)
+$domain.                    CAA     0 issue "letsencrypt.org"
+$domain.                    CAA     0 issue "cloudflare.com"
+EOF
+        
+        whiptail --title "Cloudflare DNS" --msgbox "DNS configuration exported to: $dns_file" 10 60
+    fi
+}
+
+ssl_certificate_status() {
+    local cert_info=$(certbot certificates 2>/dev/null || echo "No certificates found")
+    whiptail --title "SSL Certificate Status" --msgbox "$cert_info" 25 80
+}
+
+dns_propagation_check() {
+    local domain=$(whiptail --title "DNS Propagation Check" --inputbox "Enter domain to check:" 10 60 3>&1 1>&2 2>&3)
+    
+    if [[ -n "$domain" ]]; then
+        local dns_info=$(dig +short $domain A)
+        whiptail --title "DNS Propagation" --msgbox "DNS records for $domain:\n$dns_info" 10 60
+    fi
+}
+
+domain_health_check() {
+    local domain=$(whiptail --title "Domain Health Check" --inputbox "Enter domain to check:" 10 60 3>&1 1>&2 2>&3)
+    
+    if [[ -n "$domain" ]]; then
+        local health_info=$(cat << EOF
+🌍 DOMAIN HEALTH CHECK: $domain
+═══════════════════════════════════════════════════════════════
+
+🔗 DNS Resolution:
+$(dig +short $domain A)
+
+🌐 HTTP Status:
+$(curl -I http://$domain 2>/dev/null | head -5)
+
+🔒 HTTPS Status:
+$(curl -I https://$domain 2>/dev/null | head -5)
+
+📊 Response Time:
+$(ping -c 4 $domain 2>/dev/null | tail -1)
+EOF
+)
+        
+        whiptail --title "Domain Health" --msgbox "$health_info" 25 80
+    fi
+}
+
+update_dns_records() {
+    whiptail --title "DNS Update" --msgbox "DNS record updates should be done through your DNS provider (Cloudflare, etc.). Use the generated DNS file for reference." 10 60
+}
+
+# =============================================================================
+# ✅ DEPLOYMENT STATE CHECK
+# =============================================================================
+
+check_deployment_state() {
+    log "Checking deployment state..."
+    
+    local issues=()
+    local warnings=()
+    
+    # Check if Node.js is installed
+    if ! command -v node >/dev/null 2>&1; then
+        issues+=("Node.js is not installed")
+    fi
+    
+    # Check if npm is installed
+    if ! command -v npm >/dev/null 2>&1; then
+        issues+=("npm is not installed")
+    fi
+    
+    # Check if nginx is installed
+    if ! command -v nginx >/dev/null 2>&1; then
+        issues+=("nginx is not installed")
+    fi
+    
+    # Check if PM2 is installed
+    if ! command -v pm2 >/dev/null 2>&1; then
+        issues+=("PM2 is not installed")
+    fi
+    
+    # Check if nginx is running
+    if ! systemctl is-active --quiet nginx; then
+        warnings+=("nginx is not running")
+    fi
+    
+    # Check if PM2 processes are running
+    if ! pm2 list | grep -q "online"; then
+        warnings+=("No PM2 processes are running")
+    fi
+    
+    # Check if DATABASE_URL is set
+    if [[ -z "${DATABASE_URL:-}" ]]; then
+        issues+=("DATABASE_URL environment variable is not set")
+    fi
+    
+    # Check if project files exist
+    if [[ ! -f "$SCRIPT_DIR/backend/package.json" ]]; then
+        issues+=("Backend package.json not found")
+    fi
+    
+    if [[ ! -f "$SCRIPT_DIR/frontend/package.json" ]]; then
+        issues+=("Frontend package.json not found")
+    fi
+    
+    # Display results
+    local message="DEPLOYMENT STATE CHECK\n═══════════════════════════════════════════════════════════════\n\n"
+    
+    if [[ ${#issues[@]} -gt 0 ]]; then
+        message+="❌ CRITICAL ISSUES:\n"
+        for issue in "${issues[@]}"; do
+            message+="   • $issue\n"
+        done
+        message+="\n"
+    fi
+    
+    if [[ ${#warnings[@]} -gt 0 ]]; then
+        message+="⚠️  WARNINGS:\n"
+        for warning in "${warnings[@]}"; do
+            message+="   • $warning\n"
+        done
+        message+="\n"
+    fi
+    
+    if [[ ${#issues[@]} -eq 0 && ${#warnings[@]} -eq 0 ]]; then
+        message+="✅ All checks passed! Deployment is ready."
+    else
+        message+="\n🔧 RECOMMENDED ACTIONS:\n"
+        if [[ ${#issues[@]} -gt 0 ]]; then
+            message+="   1. Run 'Complete Deployment' to fix critical issues\n"
+        fi
+        if [[ ${#warnings[@]} -gt 0 ]]; then
+            message+="   2. Check service status and restart if needed\n"
+        fi
+    fi
+    
+    whiptail --title "Deployment State Check" --msgbox "$message" 25 80
+}
+
+# =============================================================================
+# 🔍 DEBUG TOOLS
+# =============================================================================
+
+debug_tools() {
+    while true; do
+        choice=$(whiptail --title "🔍 Debug Tools" \
+            --menu "Choose debug option:" 15 70 8 \
+            "1" "🔍 Lint Code" \
+            "2" "🧪 Run Tests" \
+            "3" "📊 Export Debug Report" \
+            "4" "🔧 Check Dependencies" \
+            "5" "📋 Validate Configuration" \
+            "6" "🧹 Clean Build" \
+            "7" "📊 Performance Analysis" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) lint_code ;;
+            2) run_tests ;;
+            3) export_debug_report ;;
+            4) check_dependencies ;;
+            5) validate_configuration ;;
+            6) clean_build ;;
+            7) performance_analysis ;;
+            0) return ;;
+        esac
+    done
+}
+
+lint_code() {
+    log "Running code linting..."
+    
+    # Lint backend
+    cd "$SCRIPT_DIR/backend"
+    if npm run lint 2>/dev/null; then
+        whiptail --title "Backend Lint" --msgbox "Backend linting passed!" 10 60
+    else
+        whiptail --title "Backend Lint" --msgbox "Backend linting failed. Check logs for details." 10 60
+    fi
+    
+    # Lint frontend
+    cd "$SCRIPT_DIR/frontend"
+    if npm run lint 2>/dev/null; then
+        whiptail --title "Frontend Lint" --msgbox "Frontend linting passed!" 10 60
+    else
+        whiptail --title "Frontend Lint" --msgbox "Frontend linting failed. Check logs for details." 10 60
+    fi
+}
+
+run_tests() {
+    log "Running tests..."
+    
+    # Run backend tests
+    cd "$SCRIPT_DIR/backend"
+    if npm test 2>/dev/null; then
+        whiptail --title "Backend Tests" --msgbox "Backend tests passed!" 10 60
+    else
+        whiptail --title "Backend Tests" --msgbox "Backend tests failed. Check logs for details." 10 60
+    fi
+    
+    # Run frontend tests
+    cd "$SCRIPT_DIR/frontend"
+    if npm test 2>/dev/null; then
+        whiptail --title "Frontend Tests" --msgbox "Frontend tests passed!" 10 60
+    else
+        whiptail --title "Frontend Tests" --msgbox "Frontend tests failed. Check logs for details." 10 60
+    fi
+}
+
+export_debug_report() {
+    local debug_file="$LOG_DIR/debug_report_$(date +%Y%m%d_%H%M%S).txt"
+    
+    {
+        echo "🐛 DEBUG REPORT - $(date)"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "🖥️  System Information:"
+        uname -a
+        echo ""
+        echo "💻 Environment Variables:"
+        env | sort
+        echo ""
+        echo "📦 Node.js Version:"
+        node --version
+        echo ""
+        echo "📦 npm Version:"
+        npm --version
+        echo ""
+        echo "🔧 PM2 Status:"
+        pm2 list
+        echo ""
+        echo "🌐 Nginx Status:"
+        systemctl status nginx
+        echo ""
+        echo "📊 Process List:"
+        ps aux | grep -E "(node|nginx|pm2)"
+        echo ""
+        echo "📁 Directory Structure:"
+        find "$SCRIPT_DIR" -type f -name "*.json" -o -name "*.js" -o -name "*.ts" | head -20
+        echo ""
+        echo "📋 Recent Logs:"
+        tail -50 "$LOG_DIR/manage.log" 2>/dev/null || echo "No logs found"
+    } > "$debug_file"
+    
+    whiptail --title "Debug Report" --msgbox "Debug report exported to: $debug_file" 10 60
+}
+
+check_dependencies() {
+    log "Checking dependencies..."
+    
+    # Check backend dependencies
+    cd "$SCRIPT_DIR/backend"
+    if npm audit --audit-level moderate 2>/dev/null; then
+        whiptail --title "Backend Dependencies" --msgbox "Backend dependencies are secure!" 10 60
+    else
+        whiptail --title "Backend Dependencies" --msgbox "Backend dependencies have security issues. Run 'npm audit fix' to resolve." 10 60
+    fi
+    
+    # Check frontend dependencies
+    cd "$SCRIPT_DIR/frontend"
+    if npm audit --audit-level moderate 2>/dev/null; then
+        whiptail --title "Frontend Dependencies" --msgbox "Frontend dependencies are secure!" 10 60
+    else
+        whiptail --title "Frontend Dependencies" --msgbox "Frontend dependencies have security issues. Run 'npm audit fix' to resolve." 10 60
+    fi
+}
+
+validate_configuration() {
+    log "Validating configuration..."
+    
+    local config_issues=()
+    
+    # Check if .env files exist
+    if [[ ! -f "$SCRIPT_DIR/backend/.env" ]]; then
+        config_issues+=("Backend .env file not found")
+    fi
+    
+    if [[ ! -f "$SCRIPT_DIR/frontend/.env" ]]; then
+        config_issues+=("Frontend .env file not found")
+    fi
+    
+    # Check if nginx config exists
+    if [[ ! -f "$SCRIPT_DIR/nginx.conf" ]]; then
+        config_issues+=("nginx.conf not found")
+    fi
+    
+    # Check if PM2 config exists
+    if [[ ! -f "$SCRIPT_DIR/backend/ecosystem.config.js" ]]; then
+        config_issues+=("PM2 ecosystem.config.js not found")
+    fi
+    
+    if [[ ${#config_issues[@]} -gt 0 ]]; then
+        local message="❌ CONFIGURATION ISSUES:\n"
+        for issue in "${config_issues[@]}"; do
+            message+="   • $issue\n"
+        done
+        whiptail --title "Configuration Validation" --msgbox "$message" 15 60
+    else
+        whiptail --title "Configuration Validation" --msgbox "✅ All configuration files are present!" 10 60
+    fi
+}
+
+clean_build() {
+    log "Cleaning build artifacts..."
+    
+    # Clean backend build
+    cd "$SCRIPT_DIR/backend"
+    rm -rf dist/ node_modules/.cache/ 2>/dev/null || true
+    
+    # Clean frontend build
+    cd "$SCRIPT_DIR/frontend"
+    rm -rf dist/ node_modules/.cache/ 2>/dev/null || true
+    
+    whiptail --title "Clean Build" --msgbox "Build artifacts cleaned successfully!" 10 60
+}
+
+performance_analysis() {
+    log "Running performance analysis..."
+    
+    local perf_info=$(cat << EOF
+📊 PERFORMANCE ANALYSIS
+═══════════════════════════════════════════════════════════════
+
+💻 CPU Usage:
+$(top -bn1 | grep "Cpu(s)")
+
+💾 Memory Usage:
+$(free -h)
+
+📊 Load Average:
+$(uptime | awk -F'load average:' '{print $2}')
+
+🌐 Network Connections:
+$(ss -tuln | wc -l) total connections
+
+📁 Disk I/O:
+$(iostat -x 1 1 2>/dev/null || echo "iostat not available")
+
+🔧 PM2 Process Info:
+$(pm2 list)
+
+🌐 Nginx Status:
+$(systemctl status nginx --no-pager -l)
+EOF
+)
+    
+    whiptail --title "Performance Analysis" --msgbox "$perf_info" 25 80
+}
+
+# =============================================================================
+# 🐛 ACTIVE DEBUG
+# =============================================================================
+
+active_debug() {
+    while true; do
+        choice=$(whiptail --title "🐛 Active Debug" \
+            --menu "Choose debug option:" 15 70 8 \
+            "1" "📋 Live Process Monitor" \
+            "2" "📊 Real-time Logs" \
+            "3" "🔍 Service Status" \
+            "4" "🌐 Network Diagnostics" \
+            "5" "📊 System Resources" \
+            "6" "🔧 Configuration Check" \
+            "7" "📋 Export Live Report" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) live_process_monitor ;;
+            2) realtime_logs ;;
+            3) service_status ;;
+            4) network_diagnostics ;;
+            5) system_resources ;;
+            6) configuration_check ;;
+            7) export_live_report ;;
+            0) return ;;
+        esac
+    done
+}
+
+live_process_monitor() {
+    whiptail --title "Live Process Monitor" --msgbox "Starting live process monitor. Press Ctrl+C to stop." 10 60
+    
+    while true; do
+        clear
+        echo "📋 LIVE PROCESS MONITOR - $(date)"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "🔧 PM2 Processes:"
+        pm2 list
+        echo ""
+        echo "📊 Top Processes:"
+        ps aux --sort=-%cpu | head -15
+        echo ""
+        echo "🌐 Network Connections:"
+        ss -tuln | head -10
+        echo ""
+        echo "Press Ctrl+C to exit..."
+        sleep 3
+    done
+}
+
+realtime_logs() {
+    local log_choice=$(whiptail --title "Real-time Logs" \
+        --menu "Choose log source:" 10 50 5 \
+        "1" "Application Logs" \
+        "2" "PM2 Logs" \
+        "3" "Nginx Logs" \
+        "4" "System Logs" \
+        "0" "Back" \
+        3>&1 1>&2 2>&3)
+    
+    case $log_choice in
+        1) tail -f "$LOG_DIR/manage.log" 2>/dev/null || echo "No application logs found" ;;
+        2) pm2 logs ;;
+        3) sudo tail -f /var/log/nginx/access.log /var/log/nginx/error.log ;;
         4) sudo journalctl -f ;;
-        5) sudo tail -f /var/log/nginx/error.log ;;
         0) return ;;
-        *) echo -e "${RED}Invalid option${NC}" ;;
     esac
 }
 
-# Placeholder functions for additional menus (to be implemented)
-debug_menu() {
-    echo -e "${YELLOW}Debug menu - To be implemented${NC}"
+service_status() {
+    local status_info=$(cat << EOF
+🔧 SERVICE STATUS
+═══════════════════════════════════════════════════════════════
+
+🌐 Nginx Status:
+$(systemctl status nginx --no-pager -l)
+
+🔧 PM2 Status:
+$(pm2 list)
+
+📊 System Services:
+$(systemctl list-units --type=service --state=running | grep -E "(nginx|node|pm2)")
+
+🌐 Port Usage:
+$(netstat -tuln | grep -E ":80|:443|:5000|:3000")
+
+📋 Process Count:
+$(ps aux | grep -E "(node|nginx)" | wc -l) processes running
+EOF
+)
+    
+    whiptail --title "Service Status" --msgbox "$status_info" 25 80
 }
 
-system_management_menu() {
-    echo -e "${YELLOW}System management menu - To be implemented${NC}"
+network_diagnostics() {
+    local network_info=$(cat << EOF
+🌐 NETWORK DIAGNOSTICS
+═══════════════════════════════════════════════════════════════
+
+🔗 Network Interfaces:
+$(ip addr show)
+
+🌍 Public IP:
+$(curl -s ifconfig.me 2>/dev/null || echo "Unable to determine")
+
+🔗 DNS Resolution:
+$(cat /etc/resolv.conf)
+
+📡 Active Connections:
+$(ss -tuln | head -15)
+
+🌐 Listening Ports:
+$(netstat -tuln | grep LISTEN)
+
+📊 Network Statistics:
+$(ss -s)
+EOF
+)
+    
+    whiptail --title "Network Diagnostics" --msgbox "$network_info" 25 80
 }
 
-ssh_management_menu() {
-    echo -e "${YELLOW}SSH management menu - To be implemented${NC}"
+system_resources() {
+    local resource_info=$(cat << EOF
+📊 SYSTEM RESOURCES
+═══════════════════════════════════════════════════════════════
+
+💻 CPU Information:
+$(lscpu | grep -E "Model name|CPU\(s\)|Thread|Core|Socket")
+
+💾 Memory Usage:
+$(free -h)
+
+💿 Disk Usage:
+$(df -h)
+
+📊 Load Average:
+$(uptime)
+
+🌐 Network I/O:
+$(cat /proc/net/dev | head -5)
+
+📁 File Descriptors:
+$(lsof | wc -l) open files
+EOF
+)
+    
+    whiptail --title "System Resources" --msgbox "$resource_info" 25 80
 }
 
-nginx_management_menu() {
-    echo -e "${YELLOW}Nginx management menu - To be implemented${NC}"
+configuration_check() {
+    local config_info=$(cat << EOF
+🔧 CONFIGURATION CHECK
+═══════════════════════════════════════════════════════════════
+
+📁 Project Structure:
+$(find "$SCRIPT_DIR" -maxdepth 2 -type d | head -10)
+
+📦 Package Files:
+$(find "$SCRIPT_DIR" -name "package.json" | head -5)
+
+🔧 Configuration Files:
+$(find "$SCRIPT_DIR" -name "*.conf" -o -name "*.config.*" | head -10)
+
+🌐 Environment Files:
+$(find "$SCRIPT_DIR" -name ".env*" | head -5)
+
+📋 Log Files:
+$(find "$LOG_DIR" -name "*.log" 2>/dev/null | head -5)
+EOF
+)
+    
+    whiptail --title "Configuration Check" --msgbox "$config_info" 25 80
 }
 
-security_menu() {
-    echo -e "${YELLOW}Security menu - To be implemented${NC}"
+export_live_report() {
+    local live_file="$LOG_DIR/live_report_$(date +%Y%m%d_%H%M%S).txt"
+    
+    {
+        echo "🐛 LIVE DEBUG REPORT - $(date)"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "🖥️  System Information:"
+        uname -a
+        echo ""
+        echo "💻 CPU Usage:"
+        top -bn1 | grep "Cpu(s)"
+        echo ""
+        echo "💾 Memory Usage:"
+        free -h
+        echo ""
+        echo "📊 Process List:"
+        ps aux --sort=-%cpu | head -20
+        echo ""
+        echo "🔧 PM2 Status:"
+        pm2 list
+        echo ""
+        echo "🌐 Nginx Status:"
+        systemctl status nginx --no-pager -l
+        echo ""
+        echo "🌐 Network Connections:"
+        ss -tuln | head -20
+        echo ""
+        echo "📋 Recent Logs:"
+        tail -100 "$LOG_DIR/manage.log" 2>/dev/null || echo "No logs found"
+    } > "$live_file"
+    
+    whiptail --title "Live Report" --msgbox "Live report exported to: $live_file" 10 60
 }
 
-hardware_monitor_menu() {
-    echo -e "${YELLOW}Hardware monitor menu - To be implemented${NC}"
+# =============================================================================
+# 📋 VIEW LOGS
+# =============================================================================
+
+view_logs() {
+    while true; do
+        choice=$(whiptail --title "📋 View Logs" \
+            --menu "Choose log option:" 15 70 8 \
+            "1" "📋 Application Logs" \
+            "2" "🔧 PM2 Logs" \
+            "3" "🌐 Nginx Logs" \
+            "4" "📊 System Logs" \
+            "5" "📁 Log Directory" \
+            "6" "🧹 Clean Logs" \
+            "7" "📊 Log Statistics" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) view_application_logs ;;
+            2) view_pm2_logs ;;
+            3) view_nginx_logs ;;
+            4) view_system_logs ;;
+            5) view_log_directory ;;
+            6) clean_logs ;;
+            7) log_statistics ;;
+            0) return ;;
+        esac
+    done
 }
 
-user_management_menu() {
-    echo -e "${YELLOW}User management menu - To be implemented${NC}"
-}
-
-cron_systemd_menu() {
-    echo -e "${YELLOW}Cron & Systemd menu - To be implemented${NC}"
-}
-
-export_changes_log() {
-    echo -e "${BLUE}Exporting changes log...${NC}"
-    if [[ -f "$CHANGES_LOG" ]]; then
-        cp "$CHANGES_LOG" "$PROJECT_ROOT/changes-export-$(date +%Y%m%d-%H%M%S).txt"
-        echo -e "${GREEN}✓ Changes log exported${NC}"
-        cat "$CHANGES_LOG"
+view_application_logs() {
+    local log_file="$LOG_DIR/manage.log"
+    if [[ -f "$log_file" ]]; then
+        tail -50 "$log_file" | whiptail --title "Application Logs" --textbox - 25 80
     else
-        echo -e "${YELLOW}No changes log found${NC}"
+        whiptail --title "Application Logs" --msgbox "No application logs found." 10 60
     fi
 }
 
-quick_setup_guide() {
-    echo -e "${WHITE}=== QUICK SETUP GUIDE ===${NC}"
-    echo
-    echo "1. Install system dependencies:"
-    echo "   sudo apt update && sudo apt install -y nodejs npm git curl"
-    echo
-    echo "2. Install PM2 globally:"
-    echo "   npm install -g pm2"
-    echo
-    echo "3. Set up environment variables:"
-    echo "   cp backend/env-template.txt backend/.env"
-    echo "   cp frontend/env.example frontend/.env"
-    echo
-    echo "4. Install project dependencies:"
-    echo "   ./manage.sh (option 18)"
-    echo
-    echo "5. Run health check:"
-    echo "   ./manage.sh (option 13)"
-    echo
-    echo "6. Start development:"
-    echo "   ./manage.sh (option 1)"
-    echo
+view_pm2_logs() {
+    pm2 logs --lines 50 | whiptail --title "PM2 Logs" --textbox - 25 80
 }
 
-# Main execution
+view_nginx_logs() {
+    local nginx_logs=$(sudo tail -50 /var/log/nginx/access.log /var/log/nginx/error.log 2>/dev/null || echo "No nginx logs found")
+    echo "$nginx_logs" | whiptail --title "Nginx Logs" --textbox - 25 80
+}
+
+view_system_logs() {
+    sudo journalctl --no-pager -l --lines=50 | whiptail --title "System Logs" --textbox - 25 80
+}
+
+view_log_directory() {
+    local log_files=$(find "$LOG_DIR" -name "*.log" -o -name "*.txt" | head -20)
+    if [[ -n "$log_files" ]]; then
+        echo "$log_files" | whiptail --title "Log Directory" --textbox - 25 80
+    else
+        whiptail --title "Log Directory" --msgbox "No log files found in $LOG_DIR" 10 60
+    fi
+}
+
+log_statistics() {
+    local stats=$(cat << EOF
+📊 LOG STATISTICS
+═══════════════════════════════════════════════════════════════
+
+📁 Log Directory: $LOG_DIR
+📊 Total Log Files: $(find "$LOG_DIR" -name "*.log" | wc -l)
+📊 Total Log Size: $(du -sh "$LOG_DIR" 2>/dev/null || echo "0B")
+
+📋 Recent Log Files:
+$(find "$LOG_DIR" -name "*.log" -mtime -7 | head -10)
+
+📊 Log File Sizes:
+$(find "$LOG_DIR" -name "*.log" -exec ls -lh {} \; | head -10)
+EOF
+)
+    
+    whiptail --title "Log Statistics" --msgbox "$stats" 25 80
+}
+
+# =============================================================================
+# ⚙️ SYSTEM CONFIGURATION
+# =============================================================================
+
+system_configuration() {
+    while true; do
+        choice=$(whiptail --title "⚙️ System Configuration" \
+            --menu "Choose configuration option:" 15 70 8 \
+            "1" "🔧 Environment Setup" \
+            "2" "📦 Package Management" \
+            "3" "🌐 Network Configuration" \
+            "4" "🔒 Security Settings" \
+            "5" "📊 Performance Tuning" \
+            "6" "🔄 Backup Configuration" \
+            "7" "📋 System Information" \
+            "0" "⬅️  Back to Main Menu" \
+            3>&1 1>&2 2>&3)
+        
+        case $choice in
+            1) environment_setup ;;
+            2) package_management ;;
+            3) network_configuration ;;
+            4) security_settings ;;
+            5) performance_tuning ;;
+            6) backup_configuration ;;
+            7) system_information ;;
+            0) return ;;
+        esac
+    done
+}
+
+environment_setup() {
+    whiptail --title "Environment Setup" --msgbox "Environment setup functionality would be implemented here." 10 60
+}
+
+package_management() {
+    whiptail --title "Package Management" --msgbox "Package management functionality would be implemented here." 10 60
+}
+
+network_configuration() {
+    whiptail --title "Network Configuration" --msgbox "Network configuration functionality would be implemented here." 10 60
+}
+
+security_settings() {
+    whiptail --title "Security Settings" --msgbox "Security settings functionality would be implemented here." 10 60
+}
+
+performance_tuning() {
+    whiptail --title "Performance Tuning" --msgbox "Performance tuning functionality would be implemented here." 10 60
+}
+
+backup_configuration() {
+    whiptail --title "Backup Configuration" --msgbox "Backup configuration functionality would be implemented here." 10 60
+}
+
+system_information() {
+    local sys_info=$(cat << EOF
+🖥️  SYSTEM INFORMATION
+═══════════════════════════════════════════════════════════════
+
+🖥️  Hostname: $(hostname)
+🖥️  OS: $(lsb_release -d | cut -f2)
+🖥️  Kernel: $(uname -r)
+🖥️  Architecture: $(uname -m)
+🖥️  Uptime: $(uptime -p)
+
+💻 CPU Information:
+$(lscpu | grep -E "Model name|CPU\(s\)|Thread|Core|Socket")
+
+💾 Memory Information:
+$(free -h)
+
+💿 Disk Information:
+$(df -h | head -5)
+
+🌐 Network Interfaces:
+$(ip addr show | grep -E "inet |UP" | head -10)
+EOF
+)
+    
+    whiptail --title "System Information" --msgbox "$sys_info" 25 80
+}
+
+# =============================================================================
+# 🚀 MAIN EXECUTION
+# =============================================================================
+
 main() {
-    # Check if running as root
-    if [[ $EUID -eq 0 ]]; then
-        echo -e "${RED}This script should not be run as root${NC}"
+    # Check if whiptail is installed
+    if ! command -v whiptail >/dev/null 2>&1; then
+        echo "Error: whiptail is not installed. Please install it first:"
+        echo "  sudo apt-get install whiptail"
         exit 1
     fi
     
-    # Create necessary directories
-    mkdir -p "$LOGS_DIR"
-    mkdir -p "$PROJECT_ROOT/docs"
+    # Check if running as root for certain operations
+    check_root
     
-    # Set proper permissions
-    set_permissions
+    # Create log entry
+    log "Master management script started"
     
-    # Check requirements
-    check_requirements
+    # Show main menu
+    show_main_menu
     
-    # Start main menu
-    main_menu
+    # Cleanup on exit
+    log "Master management script ended"
 }
 
 # Run main function

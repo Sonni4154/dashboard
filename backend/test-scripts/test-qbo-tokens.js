@@ -6,7 +6,7 @@
  */
 
 import dotenv from 'dotenv';
-import { qboTokenManager } from './src/services/qboTokenManager.js';
+import { qboTokenManager } from '../dist/services/qboTokenManager.js';
 
 // Load environment variables
 dotenv.config();

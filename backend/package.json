@@ -20,11 +20,26 @@
     "check": "tsc --noEmit",
     "lint": "eslint . --ext ts --report-unused-disable-directives --max-warnings 0",
     "test:webhook": "curl -X POST http://localhost:5000/api/webhook/quickbooks -H 'Content-Type: application/json' -d '{\"eventNotifications\":[{\"dataChangeEvent\":{\"entities\":[{\"name\":\"Customer\",\"id\":\"1\",\"operation\":\"Update\"}]}}]}'",
+    "test:sync": "curl -X POST http://localhost:5000/api/sync",
+    "test:sync-status": "curl http://localhost:5000/api/sync/status",
+    "test:health": "curl http://localhost:5000/health",
+    "test:api-health": "curl http://localhost:5000/api/health",
+    "test:webhook-health": "curl http://localhost:5000/api/webhook/health",
+    "test:all-endpoints": "npm run test:health && npm run test:api-health && npm run test:webhook-health && npm run test:sync-status",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "logs:tail": "tail -f logs/combined.log",
+    "logs:error": "tail -f logs/error.log",
+    "logs:clear": "rm -f logs/*.log",
+    "clean:dist": "rm -rf dist",
+    "clean:logs": "rm -f logs/*.log",
+    "clean:all": "npm run clean:dist && npm run clean:logs",
+    "restart:dev": "npm run clean:all && npm run build && npm run dev",
+    "deploy:check": "npm run check && npm run lint && npm run build",
+    "deploy:full": "npm run deploy:check && npm run pm2:restart"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.3",
@@ -76,6 +91,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Sonni4154/dash3.git"
+    "url": "https://github.com/Sonni4154/dashboard.git"
   }
 }

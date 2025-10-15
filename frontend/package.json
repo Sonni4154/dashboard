@@ -8,7 +8,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "tsc",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test:build": "npm run build && npm run preview",
+    "test:api": "curl http://localhost:5000/api/health",
+    "clean:dist": "rm -rf dist",
+    "clean:node": "rm -rf node_modules",
+    "clean:all": "npm run clean:dist && npm run clean:node",
+    "restart:dev": "npm run clean:dist && npm run dev",
+    "deploy:check": "npm run check && npm run lint && npm run build",
+    "deploy:full": "npm run deploy:check && npm run build"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -61,7 +69,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Sonni4154/dash3.git"
+    "url": "https://github.com/Sonni4154/dashboard.git"
   },
   "keywords": [
     "marin",

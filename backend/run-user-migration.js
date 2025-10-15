@@ -10,7 +10,10 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 async function runUserMigration() {
-  console.log('🧩 Loading .env from:', path.resolve('.env'));
+  console.log('⚠️  DEPRECATED: This project uses Supabase for schema management.');
+  console.log('📖 See backend/db/README.md for proper migration workflow.');
+  console.log('✅ Use Supabase Studio or CLI instead of this script.');
+  process.exit(1);
   
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
