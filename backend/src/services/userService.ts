@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { eq, and, or, gt } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { users, userSessions, userPermissions, type User, type NewUser, type UserRole, type Permission } from '../db/user-schema.js';
+import { users, authSessions, userPermissions, type User, type NewUser } from '../db/user-schema.js';
 import { logger } from '../utils/logger.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
@@ -40,11 +40,11 @@ export class UserService {
       const passwordHash = await this.hashPassword(userData.password);
       
       const newUser: NewUser = {
-        username: userData.username,
+        // username: userData.username, // Remove if not in schema
         email: userData.email,
-        passwordHash,
-        firstName: userData.firstName,
-        lastName: userData.lastName
+        password_hash: passwordHash,
+        first_name: userData.firstName,
+        last_name: userData.lastName
       };
 
       const [user] = await db.insert(users).values(newUser).returning();
@@ -65,7 +65,7 @@ export class UserService {
       // Find user by username or email
       const user = await db.query.users.findFirst({
         where: and(
-          eq(users.isActive, true),
+          eq(users.is_active, true),
           or(
             eq(users.username, identifier),
             eq(users.email, identifier)
@@ -79,7 +79,7 @@ export class UserService {
       }
 
       // Verify password
-      const isValidPassword = await this.verifyPassword(password, user.passwordHash);
+      const isValidPassword = await this.verifyPassword(password, user.password_hash);
       if (!isValidPassword) {
         logger.warn(`Authentication failed: Invalid password - ${identifier}`);
         return null;
@@ -87,7 +87,7 @@ export class UserService {
 
       // Update last login
       await db.update(users)
-        .set({ lastLogin: new Date() })
+        .set({ last_login: new Date() })
         .where(eq(users.id, user.id));
 
       logger.info(`User authenticated: ${user.username}`);
@@ -106,12 +106,12 @@ export class UserService {
       id: user.id,
       username: user.username,
       email: user.email,
-      role: user.role,
-      firstName: user.firstName,
-      lastName: user.lastName
+      role: user.is_admin ? 'admin' : 'employee',
+      firstName: user.first_name,
+      lastName: user.last_name
     };
 
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN || '24h' });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   }
 
   /**
@@ -152,10 +152,10 @@ export class UserService {
    */
   static async validateSession(sessionToken: string): Promise<User | null> {
     try {
-      const session = await db.query.userSessions.findFirst({
+      const session = await db.query.authSessions.findFirst({
         where: and(
-          eq(userSessions.sessionToken, sessionToken),
-          gt(userSessions.expiresAt, new Date())
+          eq(authSessions.session_token, sessionToken),
+          gt(authSessions.expires_at, new Date())
         ),
         with: {
           user: true
@@ -196,7 +196,7 @@ export class UserService {
   /**
    * Get user by ID
    */
-  static async getUserById(id: number): Promise<User | null> {
+  static async getUserById(id: string): Promise<User | null> {
     try {
       const user = await db.query.users.findFirst({
         where: eq(users.id, id)
@@ -225,10 +225,10 @@ export class UserService {
   /**
    * Update user
    */
-  static async updateUser(id: number, updates: Partial<NewUser>): Promise<User | null> {
+  static async updateUser(id: string, updates: Partial<NewUser>): Promise<User | null> {
     try {
       const [user] = await db.update(users)
-        .set({ ...updates, updatedAt: new Date() })
+        .set({ ...updates, last_updated: new Date() })
         .where(eq(users.id, id))
         .returning();
 
@@ -246,7 +246,7 @@ export class UserService {
   /**
    * Delete user
    */
-  static async deleteUser(id: number): Promise<boolean> {
+  static async deleteUser(id: string): Promise<boolean> {
     try {
       const result = await db.delete(users).where(eq(users.id, id));
       logger.info(`User deleted: ID ${id}`);

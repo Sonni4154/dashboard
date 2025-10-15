@@ -1,4 +1,5 @@
 import {
+  pgTable,
   pgSchema,
   varchar,
   text,
@@ -9,7 +10,8 @@ import {
   json,
   bigint,
   index,
-  date
+  date,
+  serial
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 

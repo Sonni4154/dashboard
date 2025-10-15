@@ -21,13 +21,13 @@ router.get('/', requireManager, async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'employee', // Map is_admin to role
+      isActive: user.is_active,
+      lastLogin: user.last_login,
+      createdAt: user.created_at,
+      updatedAt: user.last_updated
     }));
 
     res.json({
@@ -49,7 +49,7 @@ router.get('/', requireManager, async (req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
     
     // Users can only view their own profile unless they're admin/manager
     if (req.user!.id !== userId && !['admin', 'manager'].includes(req.user!.role)) {
@@ -72,13 +72,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'employee',
+      isActive: user.is_active,
+      lastLogin: user.last_login,
+      createdAt: user.created_at,
+      updatedAt: user.last_updated
     };
 
     res.json({
@@ -132,13 +132,13 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'employee',
+      isActive: user.is_active,
+      lastLogin: user.last_login,
+      createdAt: user.created_at,
+      updatedAt: user.last_updated
     };
 
     res.status(201).json({
@@ -160,7 +160,7 @@ router.post('/', requireAdmin, async (req: Request, res: Response) => {
  */
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
     const updates = req.body;
 
     // Users can only update their own profile unless they're admin/manager
@@ -193,13 +193,13 @@ router.put('/:id', async (req: Request, res: Response) => {
       id: user.id,
       username: user.username,
       email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      isActive: user.isActive,
-      lastLogin: user.lastLogin,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt
+      firstName: user.first_name,
+      lastName: user.last_name,
+      role: user.is_admin ? 'admin' : 'employee',
+      isActive: user.is_active,
+      lastLogin: user.last_login,
+      createdAt: user.created_at,
+      updatedAt: user.last_updated
     };
 
     res.json({
@@ -221,7 +221,7 @@ router.put('/:id', async (req: Request, res: Response) => {
  */
 router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
 
     // Prevent admin from deleting themselves
     if (req.user!.id === userId) {
@@ -258,7 +258,7 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
  */
 router.post('/:id/change-password', async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
     const { currentPassword, newPassword } = req.body;
 
     // Users can only change their own password unless they're admin
@@ -303,7 +303,7 @@ router.post('/:id/change-password', async (req: Request, res: Response) => {
  */
 router.get('/:id/permissions', async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
 
     // Users can only view their own permissions unless they're admin/manager
     if (req.user!.id !== userId && !['admin', 'manager'].includes(req.user!.role)) {
@@ -333,7 +333,7 @@ router.get('/:id/permissions', async (req: Request, res: Response) => {
  */
 router.post('/:id/permissions', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
     const { permission } = req.body;
 
     if (!permission) {
@@ -370,7 +370,7 @@ router.post('/:id/permissions', requireAdmin, async (req: Request, res: Response
  */
 router.delete('/:id/permissions/:permission', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const userId = parseInt(req.params.id);
+    const userId = req.params.id; // Keep as string since database uses UUID
     const permission = req.params.permission;
 
     const success = await UserService.revokePermission(userId, permission as any);

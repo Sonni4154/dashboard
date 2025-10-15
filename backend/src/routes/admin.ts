@@ -239,7 +239,7 @@ router.get('/debug/database', async (req: Request, res: Response) => {
       success: true,
       data: {
         connected: true,
-        tables: tables.rows,
+        tables: tables,
         timestamp: new Date().toISOString(),
       },
     });

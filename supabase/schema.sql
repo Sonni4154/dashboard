@@ -136,6 +136,42 @@ CREATE TYPE "google"."assignment_status" AS ENUM (
 ALTER TYPE "google"."assignment_status" OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."set_admin_context"("user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', user_id, 'role', 'admin_role')::text, true);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."set_admin_context"("user_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_service_role_context"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', '{"role": "service_role"}', true);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."set_service_role_context"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."set_user_context"("user_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    PERFORM set_config('request.jwt.claims', json_build_object('sub', user_id, 'role', 'authenticated')::text, true);
+END;
+$$;
+
+
+ALTER FUNCTION "public"."set_user_context"("user_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."trigger_set_last_updated"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -1274,6 +1310,14 @@ CREATE INDEX "idx_auth_sessions_user" ON "public"."auth_sessions" USING "btree" 
 
 
 
+CREATE INDEX "idx_auth_sessions_user_id" ON "public"."auth_sessions" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_time_clock_entries_user_id" ON "public"."time_clock_entries" USING "btree" ("user_id");
+
+
+
 CREATE INDEX "idx_time_clock_payroll" ON "public"."time_clock_entries" USING "btree" ("approved_by_payroll");
 
 
@@ -1283,6 +1327,14 @@ CREATE INDEX "idx_time_clock_user_date" ON "public"."time_clock_entries" USING "
 
 
 CREATE INDEX "idx_user_permissions_user" ON "public"."user_permissions" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_user_permissions_user_id" ON "public"."user_permissions" USING "btree" ("user_id");
+
+
+
+CREATE INDEX "idx_users_auth_uid" ON "public"."users" USING "btree" ("id") WHERE ("id" IS NOT NULL);
 
 
 
@@ -1653,7 +1705,63 @@ ALTER TABLE ONLY "quickbooks"."webhook_events"
 
 
 
+CREATE POLICY "Admin role can manage all permissions" ON "public"."user_permissions" USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can view all time entries" ON "public"."time_clock_entries" FOR SELECT USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can view all users" ON "public"."users" FOR SELECT USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to auth providers" ON "public"."auth_providers" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to kv store" ON "public"."kv_store_d9b518ae" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to permissions" ON "public"."user_permissions" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to sessions" ON "public"."auth_sessions" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to time entries" ON "public"."time_clock_entries" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to users" ON "public"."users" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to verification tokens" ON "public"."auth_verification_tokens" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Users can create own time entries" ON "public"."time_clock_entries" FOR INSERT WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can delete own sessions" ON "public"."auth_sessions" FOR DELETE USING (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can update own profile" ON "public"."users" FOR UPDATE USING ((("auth"."uid"())::"text" = ("id")::"text"));
+
+
+
+CREATE POLICY "Users can update own time entries" ON "public"."time_clock_entries" FOR UPDATE USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view own permissions" ON "public"."user_permissions" FOR SELECT USING (("auth"."uid"() = "user_id"));
 
 
 
@@ -1661,7 +1769,65 @@ CREATE POLICY "Users can view own profile" ON "public"."users" FOR SELECT USING 
 
 
 
+CREATE POLICY "Users can view own sessions" ON "public"."auth_sessions" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+CREATE POLICY "Users can view own time entries" ON "public"."time_clock_entries" FOR SELECT USING (("auth"."uid"() = "user_id"));
+
+
+
+ALTER TABLE "public"."auth_providers" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."auth_sessions" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."auth_verification_tokens" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."kv_store_d9b518ae" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."time_clock_entries" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."user_permissions" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
+
+
+CREATE POLICY "Admin role can manage customers" ON "quickbooks"."customers" USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can manage estimates" ON "quickbooks"."estimates" USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can manage invoices" ON "quickbooks"."invoices" USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can manage items" ON "quickbooks"."items" USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can manage tenants" ON "quickbooks"."tenants" USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can read sync state" ON "quickbooks"."sync_state" FOR SELECT USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can read token audit" ON "quickbooks"."token_audit" FOR SELECT USING (("auth"."role"() = 'admin_role'::"text"));
+
+
+
+CREATE POLICY "Admin role can read webhook events" ON "quickbooks"."webhook_events" FOR SELECT USING (("auth"."role"() = 'admin_role'::"text"));
+
 
 
 CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."customers" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
@@ -1677,6 +1843,38 @@ CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."invoices" 
 
 
 CREATE POLICY "Authenticated users can read QB data" ON "quickbooks"."items" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read companies" ON "quickbooks"."companies" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read customers" ON "quickbooks"."customers" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read estimate line items" ON "quickbooks"."estimates_line_items" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read estimates" ON "quickbooks"."estimates" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read invoice line items" ON "quickbooks"."invoices_line_items" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read invoices" ON "quickbooks"."invoices" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read items" ON "quickbooks"."items" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+
+
+
+CREATE POLICY "Authenticated users can read jobs" ON "quickbooks"."jobs" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
 
 
 
@@ -1696,10 +1894,95 @@ CREATE POLICY "Service role full access" ON "quickbooks"."items" USING (("auth".
 
 
 
+CREATE POLICY "Service role full access to companies" ON "quickbooks"."companies" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to customers" ON "quickbooks"."customers" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to estimate line items" ON "quickbooks"."estimates_line_items" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to estimates" ON "quickbooks"."estimates" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to invoice line items" ON "quickbooks"."invoices_line_items" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to invoices" ON "quickbooks"."invoices" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to items" ON "quickbooks"."items" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to jobs" ON "quickbooks"."jobs" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to sync state" ON "quickbooks"."sync_state" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to tenants" ON "quickbooks"."tenants" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to token audit" ON "quickbooks"."token_audit" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role full access to webhook events" ON "quickbooks"."webhook_events" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
+CREATE POLICY "Service role only access to tokens" ON "quickbooks"."tokens" USING (("auth"."role"() = 'service_role'::"text"));
+
+
+
 ALTER TABLE "quickbooks"."companies" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "quickbooks"."customers" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."estimates" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."estimates_line_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."invoices" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."invoices_line_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."jobs" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."sync_state" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."tenants" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."token_audit" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "quickbooks"."tokens" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "quickbooks"."webhook_events" ENABLE ROW LEVEL SECURITY;
 
 
 
@@ -1714,6 +1997,20 @@ ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "quickbooks"."tokens";
 
 
 
+GRANT USAGE ON SCHEMA "dashboard" TO "service_role";
+GRANT USAGE ON SCHEMA "dashboard" TO "authenticated";
+GRANT USAGE ON SCHEMA "dashboard" TO "admin_role";
+GRANT USAGE ON SCHEMA "dashboard" TO "employee_role";
+
+
+
+GRANT USAGE ON SCHEMA "google" TO "service_role";
+GRANT USAGE ON SCHEMA "google" TO "authenticated";
+GRANT USAGE ON SCHEMA "google" TO "admin_role";
+GRANT USAGE ON SCHEMA "google" TO "employee_role";
+
+
+
 
 
 
@@ -1721,10 +2018,15 @@ GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
+GRANT USAGE ON SCHEMA "public" TO "admin_role";
+GRANT USAGE ON SCHEMA "public" TO "employee_role";
 
 
 
 GRANT USAGE ON SCHEMA "quickbooks" TO "service_role";
+GRANT USAGE ON SCHEMA "quickbooks" TO "authenticated";
+GRANT USAGE ON SCHEMA "quickbooks" TO "admin_role";
+GRANT USAGE ON SCHEMA "quickbooks" TO "employee_role";
 
 
 
@@ -2134,6 +2436,24 @@ GRANT ALL ON FUNCTION "public"."replace"("public"."citext", "public"."citext", "
 GRANT ALL ON FUNCTION "public"."replace"("public"."citext", "public"."citext", "public"."citext") TO "anon";
 GRANT ALL ON FUNCTION "public"."replace"("public"."citext", "public"."citext", "public"."citext") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."replace"("public"."citext", "public"."citext", "public"."citext") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."set_admin_context"("user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."set_admin_context"("user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_admin_context"("user_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."set_service_role_context"() TO "anon";
+GRANT ALL ON FUNCTION "public"."set_service_role_context"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_service_role_context"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."set_user_context"("user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."set_user_context"("user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."set_user_context"("user_id" "uuid") TO "service_role";
 
 
 
